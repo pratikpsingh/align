@@ -1,6 +1,6 @@
 # Isaac Sim startup check
 
-This check launches the candidate Isaac Sim 4.1.0 container, performs a small CUDA calculation, advances the application 20 times, and requests shutdown. It does not install OmniDrones, simulate a drone, or train a policy. A lab attempt reached app ready but crashed during full extension cleanup; the revised fast-shutdown attempt is pending lab validation. Local checks exercise launcher and probe control flow without the simulator.
+This check launches the candidate Isaac Sim 4.1.0 container, performs a small CUDA calculation, advances the application 20 times, and requests shutdown. It does not install OmniDrones, simulate a drone, or train a policy. A lab attempt reached app ready but crashed during full extension cleanup; the revised fast-shutdown run 20260916T010519.212064IST-5253d3c9 passed on the lab. Local checks exercise launcher and probe control flow without the simulator.
 
 ## Image and prerequisites
 
@@ -50,7 +50,7 @@ On failure, preserve report.json and console.log before changing drivers or depe
 
 The supplied run 20260915T192028.862699Z-6a871ddd reached app ready, then had a native segmentation fault inside SimulationApp.close. The previous probe explicitly used fast_shutdown=False. Its final marker was never written, so individual checks cannot be confirmed from that run. This is a shutdown failure, not evidence that downloading or Docker GPU exposure failed. The exact native cause remains unproven.
 
-The revised probe uses fast_shutdown=True by default, matching [NVIDIA's 4.1 API default](https://docs.isaacsim.omniverse.nvidia.com/4.1.0/py/source/extensions/omni.isaac.kit/docs/index.html). That path exits the process rather than individually shutting down every extension. It is a targeted workaround to validate on the lab, not a proven repair of full extension cleanup. Run the command above again after syncing the updated source. Use --shutdown-mode full only to investigate full cleanup separately; reports record the chosen mode.
+The revised probe uses fast_shutdown=True by default, matching [NVIDIA's 4.1 API default](https://docs.isaacsim.omniverse.nvidia.com/4.1.0/py/source/extensions/omni.isaac.kit/docs/index.html). That path exits the process rather than individually shutting down every extension. It passed the supplied lab smoke test; this is not a proven repair of full extension cleanup. Run the command above again after syncing the updated source. Use --shutdown-mode full only to investigate full cleanup separately; reports record the chosen mode.
 
 Progress markers preserve application startup, CUDA checks, and the pre-close state. The report stores last_probe_progress separately from probe_result and records shutdown_return_observed. Nonzero container exit codes always fail, even if checks passed before closing. A failed check also remains a failure if fast shutdown exits with code zero. A pass in fast mode does not establish that full extension cleanup works. Training will need to finish saving artifacts before requesting this shutdown path.
 
@@ -63,3 +63,7 @@ ALiGn prints start/finish times in Indian Standard Time and uses IST in new run-
 The container receives TZ=Asia/Kolkata. Native simulator components may still emit UTC or relative elapsed times; console.log preserves their exact output rather than rewriting forensic evidence. ALiGn's displayed/report times are explicitly IST regardless of the host timezone. Historical reports and directory names are not rewritten.
 
 For example, the original start 2026-09-15T19:20:28.862792+00:00 is 2026-09-16T00:50:28.862792+05:30 in IST. The date changes because IST is five hours and thirty minutes ahead of UTC.
+
+## Reviewed successful run
+
+The report and console from 20260916T010519.212064IST-5253d3c9 agree: exit 0, 20 updates, CUDA sum 1024.0, one A4000, Python 3.10.14, PyTorch 2.2.2+cu118, and fast shutdown. The script hash matches the reviewed source. See the [handoff](06-lab-handoff.md) for exact evidence and the next integration task.

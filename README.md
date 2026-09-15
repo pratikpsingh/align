@@ -4,7 +4,7 @@ Tools for reproducible research on UAV formation control with local observations
 
 ## Current capabilities
 
-The installable package provides machine diagnostics, versioned JSON reports, local logs, and automated checks. Simulator integration, policies, training, checkpoint recovery, and flight visualization are not implemented yet.
+The installable package provides machine diagnostics, versioned JSON reports, local logs, and automated checks. The standalone Isaac Sim startup/CUDA smoke test has passed on the lab GPU using fast shutdown. OmniDrones integration, drone control, policies, training, checkpoint recovery, and flight visualization are not implemented yet.
 
 ## Run the diagnostic
 
@@ -30,9 +30,10 @@ Start with the [numbered documentation index](docs/00-README.md). For conceptual
 - [Installation](docs/01-installation.md): laptop setup, lab inventory, runtime limitations, troubleshooting.
 - [Diagnostic reference](docs/02-diagnostics.md): options, report fields, exit codes, artifact semantics.
 - [Development](docs/05-development.md): code layout, tests, formatting, builds, and portability.
+- [Lab handoff](docs/06-lab-handoff.md): verified runtime, next task, and a continuation prompt.
 - [Working agreement](AGENTS.md): implementation, teaching, and research-record requirements.
 
-Personal plans/ and learning/ notes are intentionally ignored by Git. Required usage instructions live in docs/ so this checkout is usable without those notes. Generated runs/ and dist/ are also ignored.
+The current checkout tracks plans/ and learning/ notes. Required usage instructions live in docs/ so this checkout is usable without those notes. Generated runs/ and dist/ are also ignored.
 
 ## Verify changes
 

@@ -4,7 +4,7 @@ Read this index first, then follow the two-digit filename prefixes in ascending 
 
 Prepared: 2026-09-15
 
-Status: the uv-managed package, machine diagnostic, local logging, and report artifacts are implemented and checked on CPU. Public [installation](../docs/01-installation.md), [diagnostic](../docs/02-diagnostics.md), and [development](../docs/05-development.md) instructions now exist. Python 3.12 remains the development pin; no ALiGn simulator or training implementation has been validated.
+Status: the uv-managed package, machine diagnostic, local logging, and report artifacts are implemented and checked on CPU. Public [installation](../docs/01-installation.md), [diagnostic](../docs/02-diagnostics.md), and [development](../docs/05-development.md) instructions now exist. Python 3.12 remains the development pin; the isolated Isaac Sim startup/CUDA probe has now passed on the lab. OmniDrones drone integration and training remain unvalidated.
 
 ## Direction
 
@@ -36,7 +36,7 @@ Begin the conceptual reading at [Project overview](../learning/01-project-overvi
 - Develop static/dynamic obstacles, GRU comparisons, advanced communication scheduling, and multiple-group split/merge behavior as extensions with their own evidence.
 - Log and export results for every experiment. Recoverable checkpoints are required before long training.
 - Explain implementation changes in topic-based learning documents. Installation and usage must be understandable by another researcher.
-- Keep plans/ and learning/ ignored as requested. Keep operational documentation in tracked docs/ when the corresponding functionality exists.
+- Keep plans/ and learning/ available when transferring work; the current checkout tracks them. Keep operational documentation in tracked docs/ when the corresponding functionality exists.
 
 ## What must be resolved with evidence
 
@@ -69,3 +69,5 @@ Maintain a dated decision record below when scope or assumptions change. Record 
 Sources: [student submission](../../papers/2026_Distributed_MARL_Submission.pdf), [my-mappo](../../my-mappo/README.md), [paper-03 repository](../../multi-UAV-formation/README.md), [NVIDIA RTX A4000 specifications](https://www.nvidia.com/en-us/products/workstations/rtx-a4000/).
 
 Implementation record, 2026-09-15: completed the runnable diagnostic foundation and its topic-based learning explanation; retained simulator/version selection and real-GPU checks as unresolved work.
+
+Current handoff, 2026-09-16: [verified simulator result and next lab task](../docs/06-lab-handoff.md). Start with a pinned OmniDrones environment and controlled single-drone/reset checks, not policy training.

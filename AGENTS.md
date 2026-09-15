@@ -4,7 +4,7 @@
 
 Implement ALiGn in OmniDrones using uv, carrying forward the verified ideas and completing the retained claims in the student's Distributed MARL submission. Correct known mathematical and implementation inconsistencies. Extend the system with obstacle avoidance, GRU comparisons, communication optimization, and formation reconfiguration. Reproducing paper-03's results is deferred.
 
-The local planning index is [plans/00-README.md](plans/00-README.md). The user intentionally ignores plans/ and learning/ in Git. These directories may be absent in another checkout; runtime behavior, installation instructions, and scientific definitions must also be documented in tracked docs/ as they become implemented.
+The local planning index is [plans/00-README.md](plans/00-README.md). The current checkout tracks plans/ and learning/; earlier notes that they were ignored are historical. Verify their presence when transferring work. Runtime behavior, installation instructions, and scientific definitions must also be documented in docs/ as they become implemented.
 
 ## Development and teaching
 

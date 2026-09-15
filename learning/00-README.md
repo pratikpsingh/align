@@ -2,7 +2,7 @@
 
 Read this index first, then follow the two-digit filename prefixes in ascending order. Each folder has its own reading sequence; numbers describe reading order, not implementation stages.
 
-These notes explain the project by topic. They will grow alongside the implementation, with worked examples and links to the actual code. They are personal learning material and are intentionally ignored by Git.
+These notes explain the project by topic. They will grow alongside the implementation, with worked examples and links to the actual code. They are personal learning material and are tracked in the current checkout.
 
 ## Available reading
 
@@ -13,8 +13,9 @@ These notes explain the project by topic. They will grow alongside the implement
 | [Lab report and runtime compatibility](03-lab-runtime.md) | What the five GPUs mean, how simulator dependencies fit together, and why we need a real drone test |
 | [Simulator startup](04-simulator-startup.md) | Why we test the image, CUDA arithmetic, and application lifecycle before drone behavior |
 | [Training, results, and recovery](05-training-results-and-recovery.md) | What training saves, how to read results, what a checkpoint restores, and how videos can be made later |
+| [From startup to drone control](06-from-startup-to-drone-control.md) | What passed, why controller/reset checks come next, and how to continue on the lab |
 
-The [planning index](../plans/00-README.md) contains implementation requirements and research decisions. The runnable package and diagnostic are implemented and checked on the laptop. Simulator and training behavior remain planned; each explanation distinguishes current code from future work.
+The [planning index](../plans/00-README.md) contains implementation requirements and research decisions. The runnable package and diagnostic are implemented and checked on the laptop. Basic simulator startup/CUDA execution has passed on the lab; drone physics and training remain unimplemented; each explanation distinguishes current code from future work.
 
 ## How future explanations will work
 
@@ -24,4 +25,4 @@ Planned topics include runtime setup, formation geometry, observations and coord
 
 For each topic, try to answer: what enters the component, what does it compute, what leaves it, and how would we know it is wrong? This keeps the explanation connected to behavior rather than only naming algorithms.
 
-Operational setup/usage documentation will also live in tracked docs/ when implemented so another researcher can use the project without these ignored notes.
+Operational setup/usage documentation will also live in tracked docs/ when implemented so another researcher can use the project without these learning notes.

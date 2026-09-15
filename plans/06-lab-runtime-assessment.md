@@ -1,6 +1,6 @@
 # Lab inventory and simulator runtime assessment
 
-Reviewed: 2026-09-15. Status: lab inventory received; simulator compatibility and execution remain unvalidated.
+Latest review: 2026-09-16. Lab inventory and the isolated Isaac Sim fast-mode startup/CUDA test are confirmed. OmniDrones integration, drone dynamics, and full extension cleanup remain unvalidated. Earlier dated findings below are retained as history.
 
 ## Evidence received
 
@@ -72,3 +72,7 @@ The lab user supplied the Isaac Sim 4.1.0 digest sha256:5bd94fce4318ca2f8bf887c4
 ## Observed shutdown failure
 
 The supplied run 20260915T192028.862699Z-6a871ddd reached app ready with an active A4000 Vulkan device, then crashed in SimulationApp.close during the explicitly selected full-cleanup mode. It exited 1 after approximately 57.5 seconds; no final probe result was available. The revised fast-shutdown probe saves pre-close evidence and corrects the Kit log mount. A successful retry and later drone/OmniDrones validation remain outstanding. Original run artifacts are preserved unchanged under runs/isaac-sim-smoke/.
+
+## Successful fast-mode retry
+
+Run 20260916T010519.212064IST-5253d3c9 passed with exit 0 in 57.1569 seconds. It reported Python 3.10.14, PyTorch 2.2.2+cu118, CUDA build 11.8, one A4000, CUDA sum 1024.0, and 20 application updates. The pre-close record and probe hash match the supplied console and current script. This validates the isolated runtime boundary, not the full OmniDrones dependency set. See [lab handoff](../docs/06-lab-handoff.md) for next acceptance criteria.

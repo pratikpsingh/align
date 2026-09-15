@@ -8,4 +8,6 @@ Start here, then follow the numbered files in order. The prefixes describe readi
 4. [Isaac Sim startup check](04-isaac-sim-smoke.md): test the candidate simulator and save evidence.
 5. [Development](05-development.md): understand the package structure, coding workflow, and local checks.
 
+6. [Lab handoff](06-lab-handoff.md): verified simulator result and a detailed agent continuation prompt.
+
 For beginner explanations, begin with the [learning index](../learning/00-README.md). For research scope and intended implementation, use the [planning index](../plans/00-README.md). Setup instructions distinguish implemented tools from pending lab validation.

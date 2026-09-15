@@ -14,7 +14,8 @@ Dependencies: access to the current scaffold and the lab machine's hardware/runt
 - [ ] Select an OmniDrones revision and compatible Isaac Sim/Python/PyTorch/TorchRL/TensorDict combination. Review licenses and asset requirements.
 - [ ] Validate uv integration without modifying the simulator's managed Python environment accidentally. Align Python constraints and lockfile with the chosen runtime.
 - [x] Establish the src package, validated diagnostic configuration, CLI, offline logging, and machine-readable inventory reports. Training configuration and simulator compatibility checks remain future work.
-- [ ] Run a minimal headless simulator example, then an observation/action/reset smoke test. Record exact commands and outputs on the lab machine.
+- [x] Run the isolated headless Isaac Sim startup/CUDA check on the lab; fast-mode run 20260916T010519.212064IST-5253d3c9 passed.
+- [ ] Integrate pinned OmniDrones dependencies and run an actual drone observation/action/reset check. Record exact commands, trajectories, and outcomes.
 
 Acceptance: reproducible setup from a clean checkout; CPU imports do not initialize Isaac Sim; GPU preflight gives actionable errors; versions and hardware are recorded. Public installation instructions and a learning document explaining the runtime are required.
 
