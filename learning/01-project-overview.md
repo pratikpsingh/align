@@ -4,7 +4,7 @@
 
 Several UAVs must reach useful positions and travel together while maintaining a requested shape and avoiding collisions. Each UAV has limited information about the others. We want to understand how much communication and memory are needed to do this reliably, including later obstacles and group changes.
 
-The student's repository contains pieces of a recurrent multi-agent reinforcement learning system in PyBullet. The submission claims additional capabilities and experiments that are not fully traceable to that checkout. ALiGn will implement the retained system in OmniDrones, correct known inconsistencies, and create evidence for what actually works. The [claim register](../plans/scope-and-claims.md) distinguishes existing ideas, gaps, and later extensions.
+The student's repository contains pieces of a recurrent multi-agent reinforcement learning system in PyBullet. The submission claims additional capabilities and experiments that are not fully traceable to that checkout. ALiGn will implement the retained system in OmniDrones, correct known inconsistencies, and create evidence for what actually works. The [claim register](../plans/01-scope-and-claims.md) distinguishes existing ideas, gaps, and later extensions.
 
 ## Simulator, environment, and controller
 
@@ -77,4 +77,4 @@ Training learns network parameters. Evaluation tests a frozen network. Rendering
 - If a policy input has three neighbor slots, have we proved only three radio messages were needed? No; acquisition and transmission must be accounted for.
 - If an LSTM layer exists in source code, have we verified recurrent learning? No; ordered sequence training and memory/reset behavior must be checked.
 
-Continue with [training, results, and recovery](training-results-and-recovery.md) for the records needed to make these ideas measurable.
+Continue with [training, results, and recovery](05-training-results-and-recovery.md) for the records needed to make these ideas measurable.

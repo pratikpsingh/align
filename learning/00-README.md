@@ -1,16 +1,20 @@
 # Learning ALiGn
 
+Read this index first, then follow the two-digit filename prefixes in ascending order. Each folder has its own reading sequence; numbers describe reading order, not implementation stages.
+
 These notes explain the project by topic. They will grow alongside the implementation, with worked examples and links to the actual code. They are personal learning material and are intentionally ignored by Git.
 
 ## Available reading
 
 | Topic | What it explains |
 |---|---|
-| [Runnable project and diagnostic](project-foundation.md) | What we built, how uv runs it, how to read the report, and the checks behind it |
-| [Project overview](project-overview.md) | UAV formation control, simulation, policies, MAPPO, local observations, memory, and the migration |
-| [Training, results, and recovery](training-results-and-recovery.md) | What training saves, how to read results, what a checkpoint restores, and how videos can be made later |
+| [Project overview](01-project-overview.md) | UAV formation control, simulation, policies, MAPPO, local observations, memory, and the migration |
+| [Runnable project and diagnostic](02-project-foundation.md) | What we built, how uv runs it, how to read the report, and the checks behind it |
+| [Lab report and runtime compatibility](03-lab-runtime.md) | What the five GPUs mean, how simulator dependencies fit together, and why we need a real drone test |
+| [Simulator startup](04-simulator-startup.md) | Why we test the image, CUDA arithmetic, and application lifecycle before drone behavior |
+| [Training, results, and recovery](05-training-results-and-recovery.md) | What training saves, how to read results, what a checkpoint restores, and how videos can be made later |
 
-The [planning index](../plans/README.md) contains implementation requirements and research decisions. The runnable package and diagnostic are implemented and checked on the laptop. Simulator and training behavior remain planned; each explanation distinguishes current code from future work.
+The [planning index](../plans/00-README.md) contains implementation requirements and research decisions. The runnable package and diagnostic are implemented and checked on the laptop. Simulator and training behavior remain planned; each explanation distinguishes current code from future work.
 
 ## How future explanations will work
 

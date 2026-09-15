@@ -1,8 +1,10 @@
 # ALiGn implementation and research plan
 
+Read this index first, then follow the two-digit filename prefixes in ascending order. Each folder has its own reading sequence; numbers describe reading order, not implementation stages.
+
 Prepared: 2026-09-15
 
-Status: the uv-managed package, machine diagnostic, local logging, and report artifacts are implemented and checked on CPU. Public [installation](../docs/installation.md), [diagnostic](../docs/diagnostics.md), and [development](../docs/development.md) instructions now exist. Python 3.12 remains the development pin; no ALiGn simulator or training implementation has been validated.
+Status: the uv-managed package, machine diagnostic, local logging, and report artifacts are implemented and checked on CPU. Public [installation](../docs/01-installation.md), [diagnostic](../docs/02-diagnostics.md), and [development](../docs/05-development.md) instructions now exist. Python 3.12 remains the development pin; no ALiGn simulator or training implementation has been validated.
 
 ## Direction
 
@@ -14,15 +16,16 @@ Paper-03 is a useful simulator/code reference, but reproducing its algorithm and
 
 | Document | Purpose |
 |---|---|
-| [Scope and claims](scope-and-claims.md) | Current focus, deferred work, evidence from the student submission and repository |
-| [Implementation roadmap](implementation-roadmap.md) | Dependencies, implementation work, validation, and documentation deliverables |
-| [Architecture and quality](architecture-and-quality.md) | Intended file structure, module contracts, configuration, and engineering practices |
-| [Research design](research-design.md) | Observations, actions, recurrence, neighbors, rewards, and shape/group behavior |
-| [Training recovery](training-recovery.md) | Power-loss recovery, checkpoint contents, atomic writes, and restart semantics |
-| [Experiments and artifacts](experiments-and-artifacts.md) | Run records, metrics, graphs, submission figures/tables, and simulation playback |
-| [Setup and documentation](setup-and-documentation.md) | Lab/laptop workflows, uv/runtime compatibility, public docs, and teaching workflow |
+| [Scope and claims](01-scope-and-claims.md) | Current focus, deferred work, evidence from the student submission and repository |
+| [Implementation roadmap](02-implementation-roadmap.md) | Dependencies, implementation work, validation, and documentation deliverables |
+| [Research design](03-research-design.md) | Observations, actions, recurrence, neighbors, rewards, and shape/group behavior |
+| [Architecture and quality](04-architecture-and-quality.md) | Intended file structure, module contracts, configuration, and engineering practices |
+| [Setup and documentation](05-setup-and-documentation.md) | Lab/laptop workflows, uv/runtime compatibility, public docs, and teaching workflow |
+| [Lab runtime assessment](06-lab-runtime-assessment.md) | Received hardware evidence, upstream compatibility findings, and candidate simulator setup |
+| [Training recovery](07-training-recovery.md) | Power-loss recovery, checkpoint contents, atomic writes, and restart semantics |
+| [Experiments and artifacts](08-experiments-and-artifacts.md) | Run records, metrics, graphs, submission figures/tables, and simulation playback |
 
-Begin the conceptual reading at [Project overview](../learning/project-overview.md). The [learning index](../learning/README.md) will grow with implementation. [Project working agreement](../AGENTS.md) records ongoing development requirements.
+Begin the conceptual reading at [Project overview](../learning/01-project-overview.md). The [learning index](../learning/00-README.md) will grow with implementation. [Project working agreement](../AGENTS.md) records ongoing development requirements.
 
 ## Decisions already made
 
@@ -40,14 +43,14 @@ Begin the conceptual reading at [Project overview](../learning/project-overview.
 | Question | How to resolve it |
 |---|---|
 | Which OmniDrones/Isaac Sim/Python versions? | Validate a version pairing on the lab machine and pin the exact revision/build |
-| Exact lab specification? | Record OS, driver, GPU model, per-device VRAM, CPU, RAM, and free disk |
+| Lab hardware allocation/runtime access? | Inventory received: five A4000 GPUs with approximately 16 GiB each and 503 GiB host RAM; confirm available allocation, external simulator installation, and GPU-container access |
 | Can simulator state be fully restored? | Test supported state serialization, including controllers and internal dynamics; select and label the proven recovery mode |
 | Can the original submission runs be reconstructed? | Recover the student's actual run configurations, evaluation scripts, and checkpoints if available |
 | Which metric thresholds define success? | Choose numerical values after basic calibration, before comparison experiments; freeze them in evaluation configuration |
 | How does each actor obtain relative positions and targets? | Define the measurement/reference-frame assumptions and prohibit undeclared global inputs |
 | Does neighbor selection save transmissions? | Specify sensing, discovery, message delivery, and broadcast/unicast accounting |
 
-The user reports a Linux lab machine with an A4000 and approximately 70 GB of memory associated with the system. An RTX A4000 is specified with 16 GB VRAM; verify the actual machine rather than treating 70 GB as per-GPU memory. The student's documented RTX PRO Blackwell 4000 machine is a different hardware description.
+The lab diagnostic received on 2026-09-15 identifies five RTX A4000 devices with 16,376 MiB each, approximately 503 GiB of host RAM, and NVIDIA driver 580.173.02. These are separate GPU memories, not one pooled allocation. See the [lab runtime assessment](06-lab-runtime-assessment.md) for exact evidence and remaining compatibility checks. The student's documented RTX PRO Blackwell 4000 machine is different hardware.
 
 ## Completion criteria
 

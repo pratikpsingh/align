@@ -10,7 +10,7 @@ CPU verification and simulator verification are separate evidence. The laptop ca
 
 Dependencies: access to the current scaffold and the lab machine's hardware/runtime information.
 
-- [ ] Inventory GPU model and per-device VRAM, driver, OS, RAM, disk, and supported Isaac Sim builds.
+- [x] Receive lab inventory: GPU models and per-device VRAM, driver, OS, host RAM, and filesystem capacity. GPU allocation/container access and simulator-build compatibility still need verification.
 - [ ] Select an OmniDrones revision and compatible Isaac Sim/Python/PyTorch/TorchRL/TensorDict combination. Review licenses and asset requirements.
 - [ ] Validate uv integration without modifying the simulator's managed Python environment accidentally. Align Python constraints and lockfile with the chosen runtime.
 - [x] Establish the src package, validated diagnostic configuration, CLI, offline logging, and machine-readable inventory reports. Training configuration and simulator compatibility checks remain future work.
@@ -53,7 +53,7 @@ Dependencies: learner state definitions. Develop this alongside the learner, bef
 - [ ] Test interruption, partial writes, corrupt latest checkpoints, repeated restarts, and counter/plot consistency.
 - [ ] Produce a report from an interrupted-and-resumed example and explain any lost rollout progress.
 
-Acceptance: an interrupted run resumes from its latest valid committed state; no silent resetting of optimizer or normalization; reports identify attempts and abandoned work. See [recovery](training-recovery.md) and [artifacts](experiments-and-artifacts.md).
+Acceptance: an interrupted run resumes from its latest valid committed state; no silent resetting of optimizer or normalization; reports identify attempts and abandoned work. See [recovery](07-training-recovery.md) and [artifacts](08-experiments-and-artifacts.md).
 
 ## Core flight and communication experiments
 
@@ -67,7 +67,7 @@ Dependencies: verified recurrent learning, recoverable runs, and a frozen basic 
 - [ ] Evaluate the frozen actor on multiple swarm sizes; record infeasible geometry, memory limits, and failures explicitly.
 - [ ] Produce smoothing, communication, recurrence-correctness, and formation-reward ablations with controlled budgets.
 
-Acceptance: C01–C11 in [the claim register](scope-and-claims.md) have traceable code/configuration, checks, and result artifacts. Results may falsify a hypothesis; implementation completion does not imply a positive result.
+Acceptance: C01–C11 in [the claim register](01-scope-and-claims.md) have traceable code/configuration, checks, and result artifacts. Results may falsify a hypothesis; implementation completion does not imply a positive result.
 
 ## Policy export and feasibility measurements
 

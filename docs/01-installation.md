@@ -4,7 +4,7 @@
 
 ALiGn currently provides a CPU-capable diagnostic command, saved reports, local logs, and automated checks. It has no training command or OmniDrones environment yet. The runtime package uses the Python standard library; Ruff is a development dependency.
 
-Validated locally on Linux x86_64 with Python 3.12.3 and uv 0.9.28. The current lockfile selects Ruff 0.16.7. Python 3.12 is the development interpreter pin, not a validated OmniDrones/Isaac Sim choice. Other operating systems and Python versions have not been validated; detailed RAM probing currently supports Linux.
+Validated locally on Linux x86_64 with Python 3.12.3 and uv 0.9.28. A user-supplied lab report also records successful diagnostic execution with Python 3.12.14 and uv 0.12.12. The current lockfile selects Ruff 0.16.7. Python 3.12 is the development interpreter pin, not a validated OmniDrones/Isaac Sim choice. Other operating systems and Python versions have not been validated; detailed RAM probing currently supports Linux.
 
 ## Install the development project
 
@@ -37,7 +37,7 @@ Offline mode cannot supply packages or a Python interpreter that have never been
 
 ## Inspect the result
 
-Each invocation creates a new folder containing report.json, doctor.log, and events.jsonl. Open report.json in the editor. Its status describes the diagnostic, and simulation_validation remains not_performed. The [diagnostic reference](diagnostics.md) explains the fields, exit codes, and limitations.
+Each invocation creates a new folder containing report.json, doctor.log, and events.jsonl. Open report.json in the editor. Its status describes the diagnostic, and simulation_validation remains not_performed. The [diagnostic reference](02-diagnostics.md) explains the fields, exit codes, and limitations.
 
 The laptop check found no nvidia-smi command on PATH and no distribution metadata for the simulator/learning packages in this project environment. This does not independently prove the physical absence of a GPU or an externally installed simulator.
 
@@ -49,7 +49,7 @@ Install the same development project in its own environment on the lab machine, 
 uv run --locked align doctor --require-nvidia
 ~~~
 
-This additionally requires a successful NVIDIA device query. It still does not initialize CUDA, launch Isaac Sim, or test rendering. The success path for physical NVIDIA hardware must be exercised on the lab machine; parser and failure behavior are checked locally.
+This additionally requires a successful NVIDIA device query. It still does not initialize CUDA, launch Isaac Sim, or test rendering. A user-supplied lab report on 2026-09-15 confirms that the NVIDIA query succeeded on five RTX A4000 devices with driver 580.173.02. Simulator execution and GPU-container access remain untested; parser and failure behavior are checked locally.
 
 Use the per-device name, driver and VRAM fields plus host RAM/OS information to select the simulator stack. System RAM and each GPU's VRAM are separate quantities. The query follows NVIDIA's [nvidia-smi interface](https://docs.nvidia.com/deploy/nvidia-smi/index.html).
 
@@ -73,3 +73,9 @@ Keep the project environment separate from simulator-managed Python installation
 | Package versions are null | Distribution metadata was not found in this interpreter; inspect external simulator activation separately |
 
 The root README and docs/ are intended for Git. runs/, plans/, and learning/ are ignored. Copy the specific diagnostic folder when transferring evidence; Git will not include it automatically.
+
+Lab prerequisite update, reviewed 2026-09-16: the user successfully queried one RTX A4000 from an Ubuntu container. The [GPU container setup procedure](03-gpu-container-setup.md) records the result and next image-acquisition commands. Actual Isaac Sim execution remains pending.
+
+## Candidate image and startup validation
+
+The lab user supplied the Isaac Sim 4.1.0 digest sha256:5bd94fce4318ca2f8bf887c4ce3220bfc1cedd303008bf6d6976b0e9e556d173. Acquisition is confirmed; simulator execution and OmniDrones compatibility remain unverified. The startup launcher and artifact contract are described in [the smoke-test guide](../docs/04-isaac-sim-smoke.md).

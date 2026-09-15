@@ -23,7 +23,7 @@ uv sync --locked
 uv run --locked align doctor
 ~~~
 
-The first command prepares the project's environment. The second runs our installed command in that environment. The --locked flag prevents automatic changes to dependency resolution when the project metadata and lockfile disagree. See the [setup instructions](../docs/installation.md) for operational details and sources.
+The first command prepares the project's environment. The second runs our installed command in that environment. The --locked flag prevents automatic changes to dependency resolution when the project metadata and lockfile disagree. See the [setup instructions](../docs/01-installation.md) for operational details and sources.
 
 ## Following one invocation through the code
 
@@ -97,7 +97,7 @@ Each invocation uses a timestamp and unique suffix, so it does not overwrite an 
 
 This is useful file-writing behavior, but it is not the training recovery system. A future training checkpoint must additionally preserve weights, optimizer state, normalization, randomness, counters, and the declared episode/simulator state.
 
-An unfinished diagnostic may leave status=running. That means no completion record was saved; it is not a successful result. The [report reference](../docs/diagnostics.md) explains all statuses and exit codes.
+An unfinished diagnostic may leave status=running. That means no completion record was saved; it is not a successful result. The [report reference](../docs/02-diagnostics.md) explains all statuses and exit codes.
 
 ## How we checked the implementation
 

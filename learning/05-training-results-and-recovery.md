@@ -36,7 +36,7 @@ If recovery resets the environments, it must also reset episode memory and parti
 
 Atomic writes and keeping older checkpoints protect against a half-written newest file. Backups to separate storage protect against a different problem: losing the disk or machine. Neither can save work that was never successfully persisted.
 
-The proposed initial saving target is every five active minutes at safe update boundaries, adjustable after timing measurements. It is not a promise of zero lost work. The detailed contract is in [training recovery](../plans/training-recovery.md).
+The proposed initial saving target is every five active minutes at safe update boundaries, adjustable after timing measurements. It is not a promise of zero lost work. The detailed contract is in [training recovery](../plans/07-training-recovery.md).
 
 ## Reading a training graph
 
@@ -82,4 +82,4 @@ Scalar rewards and final positions are insufficient to reconstruct a complete vi
 
 Start with its status, resolved configuration, checkpoint identity, and episode summary. Then inspect success/collision/formation/navigation metrics and their distributions. Use reward and optimizer diagnostics to investigate why learning behaved that way. Finally check representative videos and resource measurements.
 
-Reports should link these records together rather than requiring a researcher to guess which checkpoint produced a graph. See [experiments and artifacts](../plans/experiments-and-artifacts.md) for the planned directory structure and measurement definitions.
+Reports should link these records together rather than requiring a researcher to guess which checkpoint produced a graph. See [experiments and artifacts](../plans/08-experiments-and-artifacts.md) for the planned directory structure and measurement definitions.

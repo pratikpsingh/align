@@ -25,9 +25,11 @@ uv run --locked align doctor --require-nvidia
 
 ## Documentation
 
-- [Installation](docs/installation.md): laptop setup, lab inventory, runtime limitations, troubleshooting.
-- [Diagnostic reference](docs/diagnostics.md): options, report fields, exit codes, artifact semantics.
-- [Development](docs/development.md): code layout, tests, formatting, builds, and portability.
+Start with the [numbered documentation index](docs/00-README.md). For conceptual background, read the [learning index](learning/00-README.md); for intended research work, read the [planning index](plans/00-README.md). Each folder has its own reading order.
+
+- [Installation](docs/01-installation.md): laptop setup, lab inventory, runtime limitations, troubleshooting.
+- [Diagnostic reference](docs/02-diagnostics.md): options, report fields, exit codes, artifact semantics.
+- [Development](docs/05-development.md): code layout, tests, formatting, builds, and portability.
 - [Working agreement](AGENTS.md): implementation, teaching, and research-record requirements.
 
 Personal plans/ and learning/ notes are intentionally ignored by Git. Required usage instructions live in docs/ so this checkout is usable without those notes. Generated runs/ and dist/ are also ignored.

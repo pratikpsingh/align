@@ -2,7 +2,7 @@
 
 ## Current state and runtime decision
 
-The project now provides the installable diagnostic package, uv lockfile, Ruff development tooling, and [public setup instructions](../docs/installation.md). It still declares Python >=3.12 and has no simulator or learning dependencies. That declaration is provisional: select Python from the validated OmniDrones/Isaac Sim compatibility requirements, then update the project constraint, interpreter pin, dependency lock, and installation docs together.
+The project now provides the installable diagnostic package, uv lockfile, Ruff development tooling, and [public setup instructions](../docs/01-installation.md). It still declares Python >=3.12 and has no simulator or learning dependencies. That declaration is provisional: select Python from the validated OmniDrones/Isaac Sim compatibility requirements, then update the project constraint, interpreter pin, dependency lock, and installation docs together.
 
 The inspected paper-03 repository describes a legacy Isaac Sim 2022.2.0/Python 3.7 stack and pinned dependencies. The [OmniDrones installation guide](https://omnidrones.readthedocs.io/en/latest/installation.html) describes other supported pairings as well. Neither is a reason to install arbitrary latest versions or to assume the current scaffold's Python works. Choose and test an exact compatible stack for ALiGn.
 
@@ -21,7 +21,7 @@ Do not offer a CPU physics substitute under the OmniDrones name. If a later alte
 
 ## Lab preflight
 
-The user reports Linux, an A4000, and approximately 70 GB associated with system memory. Confirm the exact configuration. The standard [RTX A4000 specification](https://www.nvidia.com/en-us/products/workstations/rtx-a4000/) lists 16 GB VRAM, so the reported amount must not become an assumed per-GPU training budget.
+Lab inventory has now been received: five RTX A4000 devices, each reporting 16,376 MiB, and approximately 503 GiB host RAM. See the [runtime assessment](06-lab-runtime-assessment.md). The standard [RTX A4000 specification](https://www.nvidia.com/en-us/products/workstations/rtx-a4000/) lists 16 GB VRAM; the five devices do not automatically provide one combined memory allocation.
 
 These are information-gathering commands, not an ALiGn installation procedure:
 
@@ -49,12 +49,12 @@ Training/logging should work offline after required dependencies and assets are 
 
 ## Public documentation to create with implementation
 
-The root README, installation.md, diagnostics.md, and development.md now document implemented behavior. The table below describes the broader documentation to maintain as research functionality is added:
+The root README, 01-installation.md, 02-diagnostics.md, and 05-development.md now document implemented behavior. The table below describes the broader documentation to maintain as research functionality is added:
 
 | Document | Required contents |
 |---|---|
 | Root README.md | Project purpose/status, supported workflows, short tested example, links to detailed docs |
-| docs/installation.md | Exact tested OS/hardware/runtime versions, prerequisites, uv steps, assets, preflight, expected outputs, troubleshooting |
+| docs/01-installation.md | Exact tested OS/hardware/runtime versions, prerequisites, uv steps, assets, preflight, expected outputs, troubleshooting |
 | docs/configuration.md | Schema, units, defaults, overrides, resolved configuration and compatibility rules |
 | docs/training.md | Start, monitor, stop, resume, warm start, checkpoints, recovery limits, resource/storage guidance |
 | docs/evaluation.md | Freeze/load policy, suite/seed selection, success/metric definitions, artifact outputs |
@@ -67,7 +67,7 @@ Add concrete commands only when exercised, with platform/runtime and expected ou
 
 ## Learning documents
 
-The initial [learning index](../learning/README.md) and conceptual explanations establish vocabulary. For each substantive implementation increment, create or update a document named for the topic, such as formation-geometry.md, recurrent-policies.md, reward-design.md, or checkpoint-recovery.md.
+The initial [learning index](../learning/00-README.md) and conceptual explanations establish vocabulary. For each substantive implementation increment, create or update a document named for the topic, such as formation-geometry.md, recurrent-policies.md, reward-design.md, or checkpoint-recovery.md.
 
 Each explanation should include:
 

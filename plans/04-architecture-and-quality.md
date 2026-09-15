@@ -1,6 +1,6 @@
 # Architecture and engineering quality
 
-Status: intended overall design. The src package and align doctor are implemented; other command names and most domain modules below remain proposed. See [current development structure](../docs/development.md) for existing files.
+Status: intended overall design. The src package and align doctor are implemented; other command names and most domain modules below remain proposed. See [current development structure](../docs/05-development.md) for existing files.
 
 ## Package structure
 
