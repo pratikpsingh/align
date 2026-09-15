@@ -7,7 +7,13 @@ import time
 from importlib import metadata
 from pathlib import Path
 
-from align.artifacts import create_run_directory, diagnostic_logger, utc_now, write_json_atomic
+from align.artifacts import (
+    as_ist,
+    create_run_directory,
+    diagnostic_logger,
+    utc_now,
+    write_json_atomic,
+)
 from align.config import DoctorConfig
 from align.runtime.diagnostics import collect_checks
 
@@ -29,6 +35,8 @@ def run_doctor(config: DoctorConfig) -> int:
         "simulation_validation": "not_performed",
         "checks": [],
     }
+    report["started_at_ist"] = as_ist(report["started_at_utc"])
+    report["timezone"] = "Asia/Kolkata"
     write_json_atomic(report_path, report)
     with diagnostic_logger(run_dir, config.log_level) as logger:
         logger.info("Diagnostic started: %s", run_dir.name, extra={"event": "started"})
@@ -65,6 +73,7 @@ def run_doctor(config: DoctorConfig) -> int:
             report["error"] = f"{type(exc).__name__}: {exc}"
             logger.exception("Diagnostic failed.", extra={"event": "failed"})
         report["finished_at_utc"] = utc_now()
+        report["finished_at_ist"] = as_ist(report["finished_at_utc"])
         report["duration_seconds"] = time.perf_counter() - started
         report["exit_code"] = exit_code
         write_json_atomic(report_path, report)

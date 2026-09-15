@@ -35,13 +35,13 @@ No minimum VRAM, RAM, disk size, or driver version is certified yet. Those requi
 ## Files and lifecycle
 
 ~~~text
-runs/diagnostics/<UTC timestamp>-<unique suffix>/
+runs/diagnostics/<IST timestamp>IST-<unique suffix>/
   report.json
   doctor.log
   events.jsonl
 ~~~
 
-report.json uses schema_version=1. It contains run_id, command, resolved configuration, start/finish UTC timestamps, duration_seconds, exit_code, status, simulation_validation, and the list of checks. Each check has name, status, message, and details. Consumers should use named fields rather than list positions.
+report.json uses schema_version=1. It contains run_id, command, resolved configuration, start/finish IST timestamps (with +05:30 offsets), corresponding UTC timestamps, duration_seconds, exit_code, status, simulation_validation, and the list of checks. Each check has name, status, message, and details. Consumers should use named fields rather than list positions.
 
 Check statuses are ok, warning, error, and not_checked. An unavailable optional GPU query is a warning. With --require-nvidia it becomes an error. Metadata-only simulator inspection remains not_checked even if every listed distribution is present.
 
@@ -49,7 +49,7 @@ The command writes an initial running report and refreshes it after completed pr
 
 The report is replaced using a same-directory temporary file after JSON serialization and file synchronization. Failed serialization/publication preserves the previous report where the filesystem permits. This small artifact mechanism does not implement training checkpoints, directory-level power-loss durability, or disk-loss backup.
 
-doctor.log is readable text with UTC timestamps. events.jsonl has one JSON object per event, including full run ID, timestamp, level, event name, and message; check events include the check name/status. Console verbosity does not discard INFO events from the files. Each run owns and closes its logging handlers.
+doctor.log and console messages use IST timestamps with explicit +05:30 offsets. New run directory names end their timestamp with IST; older UTC run names are preserved. events.jsonl has one JSON object per event, including full run ID, timestamp_ist, timestamp_utc, level, event name, and message; check events include the check name/status. Console verbosity does not discard INFO events from the files. Each run owns and closes its logging handlers.
 
 The duration covers diagnostic work through final report preparation, excluding the final report write and final console/log output. It is not a training or inference measurement. Source bytes count the imported package's Python files; dependencies, tests, documentation, weights, and runtime memory are different quantities.
 

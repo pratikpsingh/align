@@ -39,6 +39,7 @@ class SimulatorLauncherTests(unittest.TestCase):
         def completed(command, **kwargs):
             result = {
                 "status": "passed",
+                "shutdown_mode": "fast",
                 "updates_completed": 20,
                 "cuda_sum": 1024.0,
                 "probe_sha256": hashlib.sha256(
@@ -76,3 +77,41 @@ class SimulatorLauncherTests(unittest.TestCase):
             launcher.main([])
         self.assertEqual(error.exception.code, 2)
         process.assert_not_called()
+
+    def test_fast_exit_requires_completed_checks_and_zero_exit(self):
+        for status, container_code, expected in [
+            ("passed", 0, 0),
+            ("passed", 1, 1),
+            ("failed", 0, 1),
+        ]:
+            with self.subTest(status=status, container_code=container_code):
+
+                def completed(command, status=status, container_code=container_code, **kwargs):
+                    result = {
+                        "phase": "before_close",
+                        "status": status,
+                        "shutdown_mode": "fast",
+                        "updates_completed": 20,
+                        "cuda_sum": 1024.0,
+                        "probe_sha256": hashlib.sha256(
+                            SCRIPT.with_name("isaac_sim_smoke.py").read_bytes()
+                        ).hexdigest(),
+                    }
+                    kwargs["stdout"].write("ALIGN_SMOKE_PROGRESS=" + json.dumps(result) + "\n")
+                    return subprocess.CompletedProcess(command, container_code)
+
+                code, report, _ = self.run_fake(completed)
+                self.assertEqual(code, expected)
+                self.assertFalse(report["shutdown_return_observed"])
+                self.assertIsNone(report["probe_result"])
+                self.assertEqual(report["last_probe_progress"]["status"], status)
+
+    def test_mode_mismatch_is_rejected(self):
+        # A mode mismatch cannot be accepted even when the arithmetic passed.
+        def completed(command, **kwargs):
+            result = {"phase": "before_close", "status": "passed", "shutdown_mode": "full"}
+            kwargs["stdout"].write("ALIGN_SMOKE_PROGRESS=" + json.dumps(result) + "\n")
+            return subprocess.CompletedProcess(command, 0)
+
+        code, report, _ = self.run_fake(completed)
+        self.assertEqual(code, 1)

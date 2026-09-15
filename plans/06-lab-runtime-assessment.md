@@ -68,3 +68,7 @@ Multi-GPU learning, large parallel batches, and final training experiments follo
 ## Candidate image and startup validation
 
 The lab user supplied the Isaac Sim 4.1.0 digest sha256:5bd94fce4318ca2f8bf887c4ce3220bfc1cedd303008bf6d6976b0e9e556d173. Acquisition is confirmed; simulator execution and OmniDrones compatibility remain unverified. The startup launcher and artifact contract are described in [the smoke-test guide](../docs/04-isaac-sim-smoke.md).
+
+## Observed shutdown failure
+
+The supplied run 20260915T192028.862699Z-6a871ddd reached app ready with an active A4000 Vulkan device, then crashed in SimulationApp.close during the explicitly selected full-cleanup mode. It exited 1 after approximately 57.5 seconds; no final probe result was available. The revised fast-shutdown probe saves pre-close evidence and corrects the Kit log mount. A successful retry and later drone/OmniDrones validation remain outstanding. Original run artifacts are preserved unchanged under runs/isaac-sim-smoke/.

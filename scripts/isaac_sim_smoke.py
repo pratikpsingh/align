@@ -6,6 +6,7 @@ from the simulator runtime whose compatibility we are establishing.
 
 import hashlib
 import json
+import os
 import platform
 import time
 import traceback
@@ -15,19 +16,37 @@ from pathlib import Path
 def main():
     started = time.perf_counter()
     result = {
-        "schema_version": 1,
+        "schema_version": 2,
+        "shutdown_mode": os.environ.get("ALIGN_SHUTDOWN_MODE", "fast"),
         "python": platform.python_version(),
         "probe_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
         "status": "running",
         "updates_completed": 0,
         "drone_physics_tested": False,
     }
+
+    def progress(phase):
+        result["phase"] = phase
+        result["elapsed_seconds"] = time.perf_counter() - started
+        print("ALIGN_SMOKE_PROGRESS=" + json.dumps(result, allow_nan=False), flush=True)
+
     app = None
     try:
+        if result["shutdown_mode"] not in {"fast", "full"}:
+            raise ValueError("Unknown shutdown mode")
+        progress("starting")
         from isaacsim import SimulationApp
 
-        app = SimulationApp({"headless": True, "multi_gpu": False, "fast_shutdown": False})
+        app = SimulationApp(
+            {
+                "headless": True,
+                "multi_gpu": False,
+                "fast_shutdown": result["shutdown_mode"] == "fast",
+            }
+        )
         result["startup_seconds"] = time.perf_counter() - started
+
+        progress("application_started")
 
         # Simulator extensions must be imported after application startup.
         import omni.usd
@@ -46,6 +65,7 @@ def main():
         if value != 1024.0:
             raise RuntimeError("CUDA arithmetic check failed")
         result["cuda_sum"] = value
+        progress("cuda_checked")
         if omni.usd.get_context().get_stage() is None:
             raise RuntimeError("Isaac Sim did not create a USD stage")
         for _ in range(20):
@@ -57,9 +77,11 @@ def main():
         result["error"] = f"{type(exc).__name__}: {exc}"
         traceback.print_exc()
     finally:
+        progress("before_close")
         if app is not None:
             try:
                 app.close()
+                result["close_returned"] = True
             except Exception as exc:
                 result["status"] = "failed"
                 result["shutdown_error"] = f"{type(exc).__name__}: {exc}"

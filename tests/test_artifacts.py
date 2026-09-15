@@ -1,12 +1,21 @@
 """Artifact integrity matters even when a diagnostic is interrupted."""
 
 import json
+import logging
 import unittest
+from datetime import datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
-from align.artifacts import create_run_directory, diagnostic_logger, write_json_atomic
+from align.artifacts import (
+    EventFormatter,
+    ISTFormatter,
+    as_ist,
+    create_run_directory,
+    diagnostic_logger,
+    write_json_atomic,
+)
 
 
 class ArtifactTests(unittest.TestCase):
@@ -51,3 +60,22 @@ class ArtifactTests(unittest.TestCase):
             self.assertEqual(events[0]["run_id"], run_dir.name)
             self.assertEqual(events[0]["event"], "check_completed")
             self.assertIn("Probe complete", (run_dir / "doctor.log").read_text())
+
+    def test_ist_rollover_preserves_instant(self):
+        utc = "2026-09-15T19:20:28.862792+00:00"
+        converted = as_ist(utc)
+        self.assertEqual(converted, "2026-09-16T00:50:28.862792+05:30")
+        self.assertEqual(datetime.fromisoformat(converted), datetime.fromisoformat(utc))
+        record = logging.LogRecord("align.doctor.test", logging.INFO, "", 0, "ready", (), None)
+        record.created = datetime.fromisoformat(utc).timestamp()
+        self.assertEqual(ISTFormatter().formatTime(record), "2026-09-16T00:50:28.862+05:30")
+        event = json.loads(EventFormatter().format(record))
+        self.assertEqual(event["timestamp_ist"], converted)
+        self.assertEqual(event["timestamp_utc"], utc)
+        with self.assertRaises(ValueError):
+            as_ist("2026-09-15T19:20:28")
+
+    def test_run_directory_uses_explicit_ist_label(self):
+        with TemporaryDirectory() as directory:
+            run_dir = create_run_directory(Path(directory))
+            self.assertRegex(run_dir.name, r"^\d{8}T\d{6}\.\d{6}IST-[a-f0-9]{8}$")
