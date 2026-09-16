@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "formation_weight": 1.0,
+  "tracking_weight": 1.0,
+  "progress_weight": 2.0,
+  "separation_weight": 2.0,
+  "contact_weight": 2.0,
+  "settling_weight": 0.2,
+  "smoothness_weight": 0.05,
+  "effort_weight": 0.01,
+  "control_dt_seconds": 0.01,
+  "distance_scale_m": 1.0,
+  "minimum_separation_m": 0.55,
+  "contact_force_threshold_n": 0.01,
+  "max_speed_m_s": 0.5,
+  "settling_radius_m": 0.5
+}

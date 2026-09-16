@@ -119,4 +119,4 @@ The first lab run became the calibration record. Both physical episodes reached 
 
 The corrected evaluator uses a small `1e-6` tolerance only when checking whether serialized targets/actions match their configured values. Repeatability is now reported separately for position, velocity, attitude, angular rate, actuators, and rotor state. Ground-contact angular rate was the largest variation; airborne formation behavior was much closer.
 
-The original run remains failed. A separate derived report demonstrates that its raw trajectory satisfies the corrected rules, and its measurements define the frozen schema-2 configuration. Only a new run that passes inside the simulator and on host recomputation can close the physical construction check.
+The original run remains failed. A separate derived report demonstrates that its raw trajectory satisfies the corrected rules, and its measurements define the frozen schema-2 configuration. Clean run `20260916T121136.980227IST-48963b76` then passed inside the simulator and on host recomputation, closing the physical construction check without rewriting the calibration history.

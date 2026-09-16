@@ -14,5 +14,6 @@ Start here, then follow the numbered files in order. The prefixes describe readi
 8. [Single-drone control](08-single-drone-control.md): frames, actions, controller/reset contract, measurements and lab evidence.
 9. [Formation geometry](09-formation-geometry.md): shape templates, assignment, metrics, configuration, and report command.
 10. [Multi-drone construction](10-multi-drone-construction.md): group identities, ground takeoff, safety, dwell success, and lab command.
+11. [Task reward contract](11-task-reward-contract.md): active formation and safety terms, aggregation, configuration, and trajectory audit.
 
 For beginner explanations, begin with the [learning index](../learning/00-README.md). For research scope and intended implementation, use the [planning index](../plans/00-README.md). Setup instructions distinguish CPU contracts, implemented simulator behavior, and pending research validation.

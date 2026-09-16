@@ -4,7 +4,7 @@
 
 This probe connects the tested formation geometry to four real OmniDrones Hummingbirds in one Isaac Sim environment. It checks group identity, ground reset, staged takeoff, fixed slot assignment, formation tracking, physical contacts, inter-UAV separation, dwell-based completion, and repeated reset without reinforcement learning.
 
-The source, host launcher, offline evaluator, plotting, configuration, and CPU tests are implemented. The first lab calibration has been inspected and the schema-2 tolerances are frozen with its run ID. A clean acceptance rerun is still required. Rebuild the derived image before running because it contains the ALiGn wheel present at build time.
+The source, host launcher, offline evaluator, plotting, configuration, and CPU tests are implemented. The first lab calibration supplied the frozen schema-2 tolerances, and the clean acceptance run passed. Rebuild the derived image after source changes because it contains the ALiGn wheel present at build time.
 
 ## Group and tensor contract
 
@@ -98,8 +98,10 @@ The original run remains **failed** because its schema-1 evaluator compared Pyth
 
 The old mixed-unit reset comparison also reported `0.009132`, localized to ground-contact angular rate. Unit-specific maxima were 0.0000311 m position, 0.000951 m/s linear velocity, 0.0000213 quaternion component, 0.009132 rad/s ground angular rate, 0.003433 rad/s airborne angular rate, 0.000541 actuator command, and 0.000138 rotor state. These measurements set the frozen thresholds above.
 
-Offline derived report `runs/multi-drone-reports/20260916T120616.341947IST-09b7f54d/` passes all 30 corrected checks and contains both plots. It does not change the original run status. The next simulator run must use schema 2 and pass inside the container, match host recomputation, save both plots, and exit zero.
+Offline derived report `runs/multi-drone-reports/20260916T120616.341947IST-09b7f54d/` passes all 30 corrected checks and contains both plots. It does not change the original run status.
+
+Clean acceptance run `20260916T121136.980227IST-48963b76` then passed inside the container and under host recomputation, exited zero, and saved both plots. Each repeat reached dwell success at 11.05 simulated seconds with 4,420 agent samples. Minimum separation was 0.7821 m, maximum airborne contact was zero, and final-dwell assigned/pairwise RMSE stayed below 0.0420/0.0408 m. The run supplies 8,840 total physical agent samples.
 
 ## Current limitations
 
-The probe has one group, one environment, four drones, and a plane target. It exercises the geometry and controller boundary but has no learned policy, local observation, reward, obstacle, waypoint, shape transition, or communication model. Contact attribution, aerodynamic fidelity, larger batches, and video rendering remain unvalidated. The frozen rerun is still needed before this becomes accepted physical evidence.
+The probe has one group, one environment, four drones, and a plane target. It exercises the geometry and controller boundary but has no learned policy, local observation, obstacle, waypoint, shape transition, or communication model. The reward contract is audited offline rather than returned by an online learning environment. Contact attribution, aerodynamic fidelity, larger batches, and video rendering remain unvalidated.
