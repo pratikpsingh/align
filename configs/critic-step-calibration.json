@@ -1,0 +1,7 @@
+{
+  "schema_version": 1,
+  "policy_seeds": [41, 73],
+  "candidate_critic_learning_rates": [0.0001, 0.00003, 0.00001],
+  "max_value_clip_fraction": 0.5,
+  "pre_prediction_tolerance": 0.00001
+}

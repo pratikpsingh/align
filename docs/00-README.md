@@ -24,5 +24,6 @@ Start here, then follow the numbered files in order. The prefixes describe readi
 18. [Training recovery and checkpoint integrity](18-training-recovery.md): atomic publication, complete learner state, fallback, fresh-process loading, reset semantics, and lab evidence.
 19. [Bounded task-connected training](19-task-connected-training.md): two-process live collection and PPO, checkpoint lineage, raw metrics, resume audit, and stability limits.
 20. [Training stability and deterministic evaluation](20-training-stability-and-evaluation.md): multi-seed update calibration, post-update diagnostics, fresh-process checkpoint evaluation, and artifacts.
+21. [Critic scale and matched-rollout calibration](21-critic-scale-calibration.md): value-target distributions, identical-batch learning-rate comparisons, raw samples, and selection guidance.
 
 For beginner explanations, begin with the [learning index](../learning/00-README.md). For research scope and intended implementation, use the [planning index](../plans/00-README.md). Setup instructions distinguish CPU contracts, implemented simulator behavior, and pending research validation.

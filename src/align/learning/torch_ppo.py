@@ -21,6 +21,21 @@ from align.policies.torch_recurrent import (
 
 
 @dataclass(frozen=True)
+class CriticBatch:
+    """Critic loss and unaggregated valid samples for diagnostics."""
+
+    critic: torch.Tensor
+    value: torch.Tensor
+    value_clip_fraction: torch.Tensor
+    explained_variance: torch.Tensor
+    predicted_values: torch.Tensor
+    old_values: torch.Tensor
+    returns: torch.Tensor
+    advantages: torch.Tensor
+    team_rewards: torch.Tensor
+
+
+@dataclass(frozen=True)
 class PPOLosses:
     actor: torch.Tensor
     critic: torch.Tensor
@@ -42,6 +57,57 @@ def _valid(mask: torch.Tensor, name: str) -> torch.Tensor:
     return selected
 
 
+def compute_critic_batch(
+    critic: CentralizedRecurrentCritic,
+    chunks: TorchSequenceChunks,
+    config: RecurrentPPOConfig,
+) -> CriticBatch:
+    """Compute the clipped critic objective and retain every valid sample."""
+    rows = chunks.critic
+    valid = _valid(rows.valid_mask, "critic valid_mask")
+    predicted_values = critic(
+        rows.states,
+        rows.initial_memory,
+        valid_mask=rows.valid_mask,
+    ).value[valid]
+    old_values = rows.values[valid].detach()
+    returns = rows.returns[valid].detach()
+    advantages = rows.advantages[valid].detach()
+    team_rewards = rows.team_rewards[valid].detach()
+    value_delta = predicted_values - old_values
+    clipped_values = old_values + value_delta.clamp(
+        -config.value_clip_range, config.value_clip_range
+    )
+    value_loss = (
+        0.5
+        * torch.maximum(
+            (predicted_values - returns).square(), (clipped_values - returns).square()
+        ).mean()
+    )
+    critic_loss = config.value_loss_coefficient * value_loss
+    value_clip_fraction = (value_delta.abs() > config.value_clip_range).float().mean()
+    return_variance = returns.var(unbiased=False)
+    explained_variance = torch.where(
+        return_variance > config.advantage_epsilon,
+        1.0 - (returns - predicted_values).var(unbiased=False) / return_variance,
+        return_variance.new_zeros(()),
+    )
+    result = CriticBatch(
+        critic_loss,
+        value_loss,
+        value_clip_fraction,
+        explained_variance,
+        predicted_values,
+        old_values,
+        returns,
+        advantages,
+        team_rewards,
+    )
+    if not all(bool(torch.isfinite(value).all()) for value in vars(result).values()):
+        raise ValueError("nonfinite recurrent critic loss, diagnostic, or sample")
+    return result
+
+
 def compute_ppo_losses(
     actor: SharedRecurrentActor,
     critic: CentralizedRecurrentCritic,
@@ -50,9 +116,7 @@ def compute_ppo_losses(
 ) -> PPOLosses:
     """Evaluate whole temporal chunks and reduce only valid timesteps."""
     actor_rows = chunks.actor
-    critic_rows = chunks.critic
     actor_valid = _valid(actor_rows.valid_mask, "actor valid_mask")
-    critic_valid = _valid(critic_rows.valid_mask, "critic valid_mask")
     actor_output = actor(
         actor_rows.observations,
         actor_rows.initial_memory,
@@ -85,41 +149,17 @@ def compute_ppo_losses(
     approximate_kl = (ratio - 1 - log_ratio).mean()
     clip_fraction = ((ratio - 1).abs() > config.policy_clip_ratio).float().mean()
 
-    predicted_values = critic(
-        critic_rows.states,
-        critic_rows.initial_memory,
-        valid_mask=critic_rows.valid_mask,
-    ).value[critic_valid]
-    old_values = critic_rows.values[critic_valid].detach()
-    returns = critic_rows.returns[critic_valid].detach()
-    value_delta = predicted_values - old_values
-    clipped_values = old_values + value_delta.clamp(
-        -config.value_clip_range, config.value_clip_range
-    )
-    value_loss = (
-        0.5
-        * torch.maximum(
-            (predicted_values - returns).square(), (clipped_values - returns).square()
-        ).mean()
-    )
-    critic_loss = config.value_loss_coefficient * value_loss
-    value_clip_fraction = (value_delta.abs() > config.value_clip_range).float().mean()
-    return_variance = returns.var(unbiased=False)
-    explained_variance = torch.where(
-        return_variance > config.advantage_epsilon,
-        1.0 - (returns - predicted_values).var(unbiased=False) / return_variance,
-        return_variance.new_zeros(()),
-    )
+    critic_batch = compute_critic_batch(critic, chunks, config)
     losses = PPOLosses(
         actor_loss,
-        critic_loss,
+        critic_batch.critic,
         policy_loss,
-        value_loss,
+        critic_batch.value,
         entropy,
         approximate_kl,
         clip_fraction,
-        value_clip_fraction,
-        explained_variance,
+        critic_batch.value_clip_fraction,
+        critic_batch.explained_variance,
     )
     if not all(bool(torch.isfinite(value)) for value in vars(losses).values()):
         raise ValueError("nonfinite recurrent PPO loss or diagnostic")

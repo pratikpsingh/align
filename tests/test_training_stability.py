@@ -60,7 +60,7 @@ class StabilityBundleTests(unittest.TestCase):
             "task": "recurrent-stability-task.json",
             "policy": "recurrent-policy.json",
             "rollout": "recurrent-stability-rollout.json",
-            "ppo": "recurrent-ppo-calibration.json",
+            "ppo": "recurrent-ppo-selected.json",
             "recovery": "training-recovery.json",
             "training": "task-training.json",
             "stability": "training-stability.json",
@@ -75,6 +75,7 @@ class StabilityBundleTests(unittest.TestCase):
             path.write_text(json.dumps(values))
             bundle = load_bundle(path)
             self.assertEqual(bundle[7].update_epochs, 1)
+            self.assertEqual(bundle[7].critic_learning_rate, 1e-5)
             self.assertEqual(bundle[9].attempts, 3)
             self.assertEqual(bundle[10], values)
             self.assertEqual(bundle[11].evaluation_steps, 800)

@@ -145,6 +145,7 @@ def run_training_attempt(
     recovery_config: RecoveryConfig,
     training_config: TaskTrainingConfig,
     event,
+    critic_calibration_config=None,
 ) -> dict:
     """Collect one real-task rollout, update once, and commit the boundary."""
     del recovery_config
@@ -353,6 +354,41 @@ def run_training_attempt(
 
     advantages = buffer.compute_gae()
     chunks = buffer.sequence_chunks()
+    critic_calibration = None
+    if critic_calibration_config is not None:
+        from align.simulation.critic_calibration import calibrate_critic_steps
+
+        critic_before_calibration = {
+            name: value.detach().clone() for name, value in critic.state_dict().items()
+        }
+        cpu_rng_before_calibration = torch.get_rng_state()
+        cuda_rng_before_calibration = torch.cuda.get_rng_state_all()
+        try:
+            critic_calibration = calibrate_critic_steps(
+                critic=critic,
+                chunks=chunks,
+                rollout=buffer,
+                output=output,
+                policy_config=policy_config,
+                ppo_config=ppo_config,
+                calibration_config=critic_calibration_config,
+            )
+        finally:
+            torch.set_rng_state(cpu_rng_before_calibration)
+            torch.cuda.set_rng_state_all(cuda_rng_before_calibration)
+        primary_critic_unchanged = all(
+            torch.equal(critic_before_calibration[name], value)
+            for name, value in critic.state_dict().items()
+        )
+        critic_calibration["checks"]["primary_critic_parameters_unchanged"] = (
+            primary_critic_unchanged
+        )
+        critic_calibration["primary_learner_rng_restored"] = True
+        critic_calibration["status"] = (
+            "passed" if all(critic_calibration["checks"].values()) else "failed"
+        )
+        if critic_calibration["status"] != "passed":
+            raise RuntimeError("matched-rollout critic calibration checks failed")
     actor_before = {name: value.detach().clone() for name, value in actor.state_dict().items()}
     critic_before = {name: value.detach().clone() for name, value in critic.state_dict().items()}
     update_started = time.perf_counter()
@@ -463,7 +499,7 @@ def run_training_attempt(
         "raw_metric_row_count_is_exact": raw_rows == cfg.horizon * cfg.num_envs,
     }
     torch.cuda.synchronize()
-    return {
+    metrics = {
         "status": "passed" if all(checks.values()) else "failed",
         "checks": checks,
         "attempt_id": attempt_id,
@@ -495,3 +531,6 @@ def run_training_attempt(
         "updates": update_diagnostics,
         "post_update": post_update_diagnostics,
     }
+    if critic_calibration is not None:
+        metrics["critic_calibration"] = critic_calibration
+    return metrics

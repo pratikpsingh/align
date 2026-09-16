@@ -17,9 +17,14 @@ The defaults are explicit in:
 - [training-stability.json](../configs/training-stability.json): seeds 41 and 73, three updates per seed, 800 evaluation steps, and diagnostic guidance;
 - [recurrent-stability-rollout.json](../configs/recurrent-stability-rollout.json): 768 simulator steps per update, four environments, four agents, and 16-timestep recurrent chunks;
 - [recurrent-stability-task.json](../configs/recurrent-stability-task.json): an 800-step task time limit;
-- [recurrent-ppo-calibration.json](../configs/recurrent-ppo-calibration.json): one full-batch PPO epoch, actor learning rate 3e-4, and critic learning rate 1e-4.
+- [recurrent-ppo-selected.json](../configs/recurrent-ppo-selected.json): one full-batch PPO epoch, actor learning rate 3e-4, and the selected critic learning rate 1e-5.
 
-The earlier integration profile used two PPO epochs and a critic learning rate of 1e-3. Its second epoch produced full value clipping and a large critic gradient in one batch. The calibration profile is a conservative candidate chosen to measure that problem. It is not yet an accepted final hyperparameter set.
+The earlier integration profile used two PPO epochs and a critic learning rate of 1e-3. Run `20260916T230826.067057IST-2534c4be` used
+[recurrent-ppo-calibration.json](../configs/recurrent-ppo-calibration.json) at
+critic rate 1e-4 and produced full post-update value clipping. Matched-rollout
+run `20260916T233640.753380IST-74e912b3` selected 1e-5. The stability
+launcher now uses the separate selected profile so both earlier configurations
+remain reproducible from their names and saved run configurations.
 
 Construction enters its formation phase after 50 ground steps and 500 takeoff steps. A 768-step batch therefore has enough configured time to include the formation phase if the policy remains safe. The reports separately record whether evaluation trajectories physically reached that phase; early termination is retained as an outcome rather than hidden.
 
@@ -136,12 +141,54 @@ critic learning rate from 1e-3 to 1e-4 and using one PPO epoch therefore
 did not resolve critic displacement. This calibration profile is operationally
 validated but is not accepted for sustained learning.
 
-The next optimizer investigation should record return and predicted-value
-distributions, test value/return scaling or normalization, and compare a
-smaller critic step using matched seeds and rollouts. Do this before a long
-baseline training run.
+Matched-rollout run `20260916T233640.753380IST-74e912b3` completed that
+investigation. Across seeds 41 and 73, critic rate `1e-4` again produced a
+value clip fraction of 1.0, `3e-5` produced 0.938802, and `1e-5` produced
+0.0. The selected next rate is therefore `1e-5`; see
+[critic scale calibration](21-critic-scale-calibration.md). Negative explained
+variance remains unresolved, so the selected rate must be tested through this
+same multi-update and deterministic-evaluation protocol before any long run.
 
 The host-safe configuration, result gates, and summary aggregation pass with
-the full 160-test suite under Python 3.10 and Python 3.12. Rendering and video
+the full 166-test suite under Python 3.10 and Python 3.12. Rendering and video
 remain unvalidated. The run directory is ignored by Git and requires separate
 backup.
+
+## Selected-step lab evidence
+
+Run `20260916T234710.834029IST-0733818e` passed on GPU 0 using derived
+image
+`sha256:e1b8ae3cc3665b20785614b154b9c3c82e6f9e49a1281fb2243a67cf71219c68`.
+It started at 2026-09-16 23:47:10 IST, finished at 23:53:13 IST, and
+took 362.637 seconds. It repeated the same two seeds, three updates per seed,
+and fresh-process 800-step evaluation using critic rate `1e-5`.
+
+All hard checks and every diagnostic guidance flag passed. Post-update value
+clip fraction was 0.0 on all six updates, compared with 1.0 on all six updates
+at rate `1e-4`. Explained variance remained negative but improved from the
+earlier range of -7.4858 to -3.7917 (mean -4.9114) to -2.6921 to -1.7757
+(mean -2.2270). Mean post-update value loss fell from 0.16930 to 0.11477.
+These measurements accept `1e-5` as the current unnormalized critic optimizer
+setting.
+
+The deterministic evaluations again reached the formation phase and ended by
+time limit in all eight environment episodes, with no success or safety
+termination:
+
+| Seed | Mean team reward | Mean assigned RMSE | Mean pairwise RMSE | Minimum separation |
+|---:|---:|---:|---:|---:|
+| 41 | -0.0218842 | 1.39564 m | 0.289415 m | 0.859425 m |
+| 73 | -0.0220798 | 1.38346 m | 0.379399 m | 0.998245 m |
+
+The combined mean assigned RMSE changed from 1.38325 m at `1e-4` to
+1.38955 m at `1e-5`; mean evaluation reward changed from -0.0217746 to
+-0.0219820. Three updates are too few to interpret these small changes as
+learning differences. The run establishes stable update scale and recoverable
+evaluation, not formation learning.
+
+The next training experiment can extend the number of updates with this fixed
+profile while preserving periodic checkpoints and deterministic evaluation.
+It should monitor explained variance, success count, assigned RMSE, separation,
+and reward against update count. Observation or return normalization should be
+introduced only as a separately checkpointed experiment if the critic remains
+poor over that longer bounded run.

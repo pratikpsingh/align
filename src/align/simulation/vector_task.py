@@ -16,6 +16,7 @@ from pathlib import Path
 
 from align.artifacts import as_ist, utc_now, write_json_atomic
 from align.learning.collector_config import CollectorProbeConfig
+from align.learning.critic_calibration_config import CriticCalibrationConfig
 from align.learning.ppo_config import RecurrentPPOConfig
 from align.learning.recovery_config import RecoveryConfig
 from align.learning.rollout import RolloutConfig
@@ -89,15 +90,20 @@ def load_bundle(path):
     collector_sections = {"policy", "rollout", "collector"}
     training_sections = {"policy", "rollout", "ppo", "recovery", "training"}
     stability_sections = training_sections | {"stability"}
-    known = required | collector_sections | stability_sections
+    critic_calibration_sections = training_sections | {"critic_calibration"}
+    learner_sections = (
+        training_sections,
+        stability_sections,
+        critic_calibration_sections,
+    )
+    known = required | collector_sections | stability_sections | critic_calibration_sections
     missing = required - set(values)
     unknown = set(values) - known
     supplied_optional = set(values) - required
     valid_optional = supplied_optional in (
         set(),
         collector_sections,
-        training_sections,
-        stability_sections,
+        *learner_sections,
     )
     if missing or unknown or not valid_optional:
         raise ValueError(
@@ -119,22 +125,27 @@ def load_bundle(path):
     )
     ppo = (
         RecurrentPPOConfig.from_dict(values["ppo"])
-        if supplied_optional in (training_sections, stability_sections)
+        if supplied_optional in learner_sections
         else None
     )
     recovery = (
         RecoveryConfig.from_dict(values["recovery"])
-        if supplied_optional in (training_sections, stability_sections)
+        if supplied_optional in learner_sections
         else None
     )
     training = (
         TaskTrainingConfig.from_dict(values["training"])
-        if supplied_optional in (training_sections, stability_sections)
+        if supplied_optional in learner_sections
         else None
     )
     stability = (
         StabilityConfig.from_dict(values["stability"])
         if supplied_optional == stability_sections
+        else None
+    )
+    critic_calibration = (
+        CriticCalibrationConfig.from_dict(values["critic_calibration"])
+        if supplied_optional == critic_calibration_sections
         else None
     )
     return (
@@ -150,6 +161,7 @@ def load_bundle(path):
         training,
         values,
         stability,
+        critic_calibration,
     )
 
 
@@ -231,19 +243,21 @@ def run(
         training,
         resolved_config,
         stability,
+        critic_calibration,
     ) = load_bundle(config_path)
     if num_envs not in (1, task.num_envs):
         raise ValueError("num_envs must be one or the configured probe batch")
     if scenario == "single" and num_envs != 1:
         raise ValueError("single scenario requires one environment")
     if (
-        scenario in ("batch", "collector", "training", "stability", "evaluation")
+        scenario
+        in ("batch", "collector", "training", "stability", "evaluation", "critic-calibration")
         and num_envs != task.num_envs
     ):
         raise ValueError(f"{scenario} scenario requires the configured environment count")
     if scenario == "collector" and any(value is None for value in (policy, rollout, collector)):
         raise ValueError("collector scenario requires policy, rollout, and collector sections")
-    if scenario in ("training", "stability", "evaluation") and any(
+    if scenario in ("training", "stability", "evaluation", "critic-calibration") and any(
         value is None for value in (policy, rollout, ppo, recovery, training)
     ):
         raise ValueError(
@@ -251,7 +265,9 @@ def run(
         )
     if scenario in ("stability", "evaluation") and stability is None:
         raise ValueError(f"{scenario} scenario requires the stability section")
-    if scenario in ("training", "stability", "evaluation") and any(
+    if scenario == "critic-calibration" and critic_calibration is None:
+        raise ValueError("critic-calibration scenario requires the critic_calibration section")
+    if scenario in ("training", "stability", "evaluation", "critic-calibration") and any(
         value is None
         for value in (
             logical_run_id,
@@ -264,9 +280,13 @@ def run(
         raise ValueError(
             f"{scenario} scenario requires run, attempt, checkpoint, and identity values"
         )
-    if scenario not in ("collector", "training", "stability", "evaluation") and any(
-        value is not None for value in (policy, rollout, collector, ppo, recovery, training)
-    ):
+    if scenario not in (
+        "collector",
+        "training",
+        "stability",
+        "evaluation",
+        "critic-calibration",
+    ) and any(value is not None for value in (policy, rollout, collector, ppo, recovery, training)):
         raise ValueError("learner sections are valid only for collector or training scenarios")
 
     result = {
@@ -941,6 +961,49 @@ def run(
         )
         event("initial_reset", reset_error=reset_error)
 
+        if scenario == "critic-calibration":
+            from align.simulation.task_training import run_training_attempt
+
+            if training.policy_seed not in critic_calibration.policy_seeds:
+                raise ValueError("training policy seed is not in critic calibration seeds")
+            metrics = run_training_attempt(
+                env=env,
+                initial=initial,
+                output=output,
+                checkpoint_directory=checkpoint_directory,
+                logical_run_id=logical_run_id,
+                attempt_id=attempt_id,
+                resume=False,
+                resolved_config=resolved_config,
+                config_sha256=hashlib.sha256(config_path.read_bytes()).hexdigest(),
+                source_identity=source_identity,
+                runtime_identity=runtime_identity,
+                policy_config=policy,
+                rollout_config=rollout,
+                ppo_config=ppo,
+                recovery_config=recovery,
+                training_config=training,
+                event=event,
+                critic_calibration_config=critic_calibration,
+            )
+            calibration = metrics["critic_calibration"]
+            save_json(output / "metrics.json", metrics)
+            result.update(
+                status=metrics["status"],
+                drone_physics_tested=True,
+                vector_task_physics_tested=True,
+                critic_calibration_tested=calibration["status"] == "passed",
+                optimizer_updates=1,
+                agent_steps=rollout.horizon * rollout.num_envs * rollout.num_agents,
+                torch_peak_allocated_bytes=torch.cuda.max_memory_allocated(),
+            )
+            event(
+                "critic_calibration_finished",
+                status=result["status"],
+                checks=calibration["checks"],
+            )
+            return 0 if result["status"] == "passed" else 1
+
         if scenario == "stability":
             from align.simulation.stability_training import run_stability_training
 
@@ -1358,7 +1421,15 @@ def main(argv=None):
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument(
         "--scenario",
-        choices=("single", "batch", "collector", "training", "stability", "evaluation"),
+        choices=(
+            "single",
+            "batch",
+            "collector",
+            "training",
+            "stability",
+            "evaluation",
+            "critic-calibration",
+        ),
         required=True,
     )
     parser.add_argument("--num-envs", type=int, required=True)

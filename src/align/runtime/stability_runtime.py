@@ -163,7 +163,7 @@ def run_main(argv=None) -> int:
     root = project_root()
     args.task_config = args.task_config or root / "configs/recurrent-stability-task.json"
     args.rollout_config = args.rollout_config or root / "configs/recurrent-stability-rollout.json"
-    args.ppo_config = args.ppo_config or root / "configs/recurrent-ppo-calibration.json"
+    args.ppo_config = args.ppo_config or root / "configs/recurrent-ppo-selected.json"
     stability = _load(
         args.stability_config or root / "configs/training-stability.json",
         StabilityConfig,
