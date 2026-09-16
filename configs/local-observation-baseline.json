@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "max_neighbors": 7,
+  "neighbor_radius_m": 1.5,
+  "own_velocity_scale_m_s": 1.0,
+  "relative_velocity_scale_m_s": 2.0,
+  "target_distance_scale_m": 3.0,
+  "critic_capacity": 8,
+  "critic_position_scale_m": 5.0
+}

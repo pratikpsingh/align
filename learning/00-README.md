@@ -18,14 +18,15 @@ These notes explain the project by topic. They will grow alongside the implement
 | [Formation geometry and assignment](08-formation-geometry-and-assignment.md) | Shape slots, minimum spacing, one-to-one assignment, and comparable error metrics |
 | [Ground-to-formation construction](09-ground-to-formation-construction.md) | Stable identities, staged takeoff, velocity tracking, contact/separation safety, and success dwell |
 | [Task rewards and aggregation](10-task-rewards-and-aggregation.md) | Active formation and safety terms, means versus sums, timestep scaling, memory, and audit evidence |
+| [Local observations and neighbor masks](11-local-observations-and-neighbor-masks.md) | Actor locality, hard range, fixed budgets, padding masks, normalization, and critic separation |
 
-The [planning index](../plans/00-README.md) contains implementation requirements and research decisions. The runnable package and diagnostic are implemented and checked on the lab. Simulator startup/CUDA, the deterministic single-drone suite, and the four-drone construction suite have passed. Formation geometry and the task reward contract are CPU-validated; the reward was also audited on the accepted physical trajectory. Training remains unimplemented.
+The [planning index](../plans/00-README.md) contains implementation requirements and research decisions. The runnable package and diagnostic are implemented and checked on the lab. Simulator startup/CUDA, the deterministic single-drone suite, and the four-drone construction suite have passed. Formation geometry, task rewards, and bounded local observations are CPU-validated; rewards and observations were also audited on the accepted physical trajectory. Training remains unimplemented.
 
 ## How future explanations will work
 
 Each implemented topic will connect its purpose, mathematical idea, small example, code/configuration, validation, and limitations. Runnable examples will show tested commands and expected outputs. CPU checks and actual flight checks will be identified separately.
 
-Planned topics include observations and coordinate frames, recurrent policies, PPO/GAE, neighborhood graphs, checkpoint recovery, experiment analysis, waypoint missions, formation transitions, obstacle sensing, and group coordination. Create these when there is substantive material to explain; do not add empty placeholder lessons.
+Planned topics include vectorized task environments, recurrent policies, PPO/GAE, communication accounting, checkpoint recovery, experiment analysis, waypoint missions, formation transitions, obstacle sensing, and group coordination. Create these when there is substantive material to explain; do not add empty placeholder lessons.
 
 For each topic, try to answer: what enters the component, what does it compute, what leaves it, and how would we know it is wrong? This keeps the explanation connected to behavior rather than only naming algorithms.
 

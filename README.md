@@ -4,7 +4,7 @@ Tools for reproducible research on UAV formation control with local observations
 
 ## Current capabilities
 
-The installable package provides machine diagnostics, versioned JSON reports, local logs, and automated checks. The standalone Isaac Sim startup/CUDA smoke test, deterministic one-drone controller suite, and four-drone ground-to-plane construction probe passed on the lab GPU using fast shutdown. Simulator-independent formation geometry and an active, component-logged task reward contract are implemented. Policies, training, and checkpoint recovery remain future work.
+The installable package provides machine diagnostics, versioned JSON reports, local logs, and automated checks. The standalone Isaac Sim startup/CUDA smoke test, deterministic one-drone controller suite, and four-drone ground-to-plane construction probe passed on the lab GPU using fast shutdown. Simulator-independent formation geometry, active component-logged rewards, and fixed-capacity masked local observations are implemented and audited. Policies, training, and checkpoint recovery remain future work.
 
 ## Run the diagnostic
 
@@ -35,6 +35,7 @@ Start with the [numbered documentation index](docs/00-README.md). For conceptual
 - [Formation geometry](docs/09-formation-geometry.md): templates, assignment, metrics, configuration, and deterministic reports.
 - [Multi-drone construction](docs/10-multi-drone-construction.md): group contract, staged takeoff, safety measurements, and lab execution.
 - [Task reward contract](docs/11-task-reward-contract.md): component equations, aggregation, configuration, and offline trajectory audit.
+- [Local observation contract](docs/12-local-observation-contract.md): hard radius, neighbor budget, masks, normalization, critic separation, and topology audit.
 - [Lab handoff](docs/06-lab-handoff.md): verified runtime, next task, and a continuation prompt.
 - [Working agreement](AGENTS.md): implementation, teaching, and research-record requirements.
 

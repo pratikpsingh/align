@@ -23,7 +23,7 @@ Acceptance: reproducible setup from a clean checkout; CPU imports do not initial
 
 Dependencies: configuration foundation; GPU runtime for integration checks.
 
-- [ ] Specify task observation/action frames, units, tensor shapes, masks, control frequency, controller state, and limits. The single-drone instrumentation/controller subset is documented and accepted; task masks remain future work.
+- [x] Specify task observation/action frames, units, tensor shapes, masks, control frequency, controller state, and limits. The controller is physically accepted; audit `20260916T125326.859172IST-96b8931e` validates the 55-value masked local actor input and separate 80-value critic state on 8,840 agent steps.
 - [x] Implement tested cube/sphere/pyramid/plane templates, target assignment, formation metrics, and group-aware data structures. The first group contract uses stable identities and fixed assignment.
 - [x] Implement reset, ground takeoff, goal tracking, dwell-based success, time limits, and explicit termination reasons. Accepted four-drone plane run `20260916T121136.980227IST-48963b76` passed 30/30 checks over two successful episodes.
 - [x] Integrate a calibrated low-level controller and validate commanded motion before policy learning.
