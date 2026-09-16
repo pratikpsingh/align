@@ -1,0 +1,7 @@
+{
+  "schema_version": 1,
+  "recovery_mode": "training_resume_with_environment_reset",
+  "checkpoint_interval_active_seconds": 300.0,
+  "minimum_retained_checkpoints": 3,
+  "write_failure_policy": "stop"
+}

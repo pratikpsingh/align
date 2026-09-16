@@ -100,12 +100,11 @@ flight.
 
 ## What comes next
 
-Training recovery comes before sustained learning. A complete checkpoint must
-save the actor, critic, both optimizer states, any normalization state, random
-number generator states, counters, immutable configuration, and parent-run
-lineage. Its write must be atomic, and resume must survive an interrupted or
-corrupt newest checkpoint.
+The [training recovery mechanism](17-training-recovery.md) now saves the actor,
+critic, both optimizer states, normalization state, random-number states,
+counters, immutable configuration, and checkpoint lineage. Its atomic write and
+fallback checks passed in the vendor CUDA runtime.
 
-After recovery is verified, a short simulator training command can alternate
-live collection and recurrent PPO updates, save recoverable checkpoints, and
-evaluate whether task metrics change without claiming final research results.
+A short simulator training command can now alternate live collection and
+recurrent PPO updates, save recoverable checkpoints, and evaluate whether task
+metrics change without claiming final research results.

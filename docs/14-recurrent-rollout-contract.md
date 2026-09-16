@@ -88,7 +88,7 @@ The current accepted local report is `20260916T184837.139372IST-43d6b59f`. Its w
 
 CPU tests cover finite values, exact shapes, bounded actions, mutually exclusive terminal flags, zero terminal bootstrap, recurrent reset enforcement, truncation bootstrap, stopped cross-episode GAE traces, padding masks, sequence order, episode-safe chunks, initial LSTM states, and reproducible chunk shuffling.
 
-The reference uses immutable Python tuples so it can be checked without PyTorch or Isaac Sim. It defines one cooperative team reward, value, and critic-memory lane per environment, plus one actor-memory lane per drone. The accepted device collector matched its GAE, returns, and chunk metadata, and the accepted PPO probe validated masked optimizer updates. These isolated checks do not establish a task-connected learning result or checkpoint recovery.
+The reference uses immutable Python tuples so it can be checked without PyTorch or Isaac Sim. It defines one cooperative team reward, value, and critic-memory lane per environment, plus one actor-memory lane per drone. The accepted device collector matched its GAE, returns, and chunk metadata, and the accepted PPO probe validated masked optimizer updates. The separate reset-mode recovery probe now preserves and reloads learner state. These isolated checks still do not establish a task-connected learning result.
 
 ## Next implementation
 

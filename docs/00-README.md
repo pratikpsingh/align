@@ -21,5 +21,6 @@ Start here, then follow the numbered files in order. The prefixes describe readi
 15. [Shared recurrent actor and centralized critic](15-recurrent-policy-contract.md): policy architecture, bounded action distribution, CUDA acceptance, and usage.
 16. [Device recurrent rollout collector](16-device-recurrent-collector.md): live policy/task integration, boundary bootstrapping, partial resets, CUDA/reference parity, and artifacts.
 17. [Recurrent MAPPO optimizer update](17-recurrent-ppo-update.md): masked PPO/value losses, gradient clipping, padding invariance, CUDA evidence, and limits.
+18. [Training recovery and checkpoint integrity](18-training-recovery.md): atomic publication, complete learner state, fallback, fresh-process loading, reset semantics, and lab evidence.
 
 For beginner explanations, begin with the [learning index](../learning/00-README.md). For research scope and intended implementation, use the [planning index](../plans/00-README.md). Setup instructions distinguish CPU contracts, implemented simulator behavior, and pending research validation.

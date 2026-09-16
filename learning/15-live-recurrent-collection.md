@@ -123,6 +123,7 @@ old action log probabilities, clip policy and value changes, and report useful
 diagnostics such as approximate KL divergence, clip fraction, entropy, gradient
 norms, and explained variance.
 
-Before long training, checkpoint recovery must save both networks, both
-optimizers, normalization state if enabled, RNG states, update and environment
-counters, immutable configuration, and run lineage.
+The accepted reset-mode recovery mechanism now saves both networks, both
+optimizers, declared normalization state, RNG states, update and environment
+counters, immutable configuration, and checkpoint lineage. The next task joins
+collection, updates, and recovery in a short simulator training loop.

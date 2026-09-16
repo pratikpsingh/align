@@ -56,10 +56,12 @@ Acceptance: recurrence is trained across time rather than as independent length-
 Dependencies: learner state definitions. Develop this alongside the learner, before expensive runs.
 
 - [ ] Implement run identities, immutable configuration, source/runtime manifests, event logs, and raw metric tables.
-- [ ] Implement atomic checkpoints, integrity verification, retained previous checkpoints, restart lineage, and a clearly stated simulator recovery mode.
+- [x] Implement atomic checkpoints, pre-publication deserialization, integrity verification, retained previous checkpoints, parent-checkpoint lineage, and the explicit `training_resume_with_environment_reset` mode. CUDA run `20260916T214543.893138IST-10cdc57d` passed all 18 checks.
 - [ ] Separate resume, policy warm start, evaluation, rendering, and reporting.
 - [ ] Test interruption, partial writes, corrupt latest checkpoints, repeated restarts, and counter/plot consistency.
+  - [x] Host tests cover abrupt subprocess exit, partial and failed writes, malformed pre-publication payloads, corrupt newest fallback, and configuration mismatch. The CUDA probe matched the exact next update, advanced counters once, and loaded the fallback in a fresh process. Task-connected attempt metrics and plot supersession remain pending.
 - [ ] Produce a report from an interrupted-and-resumed example and explain any lost rollout progress.
+  - [x] The synthetic recovery report explicitly discards partial rollout and recurrent state. An interrupted live simulator-training example remains pending.
 
 Acceptance: an interrupted run resumes from its latest valid committed state; no silent resetting of optimizer or normalization; reports identify attempts and abandoned work. See [recovery](07-training-recovery.md) and [artifacts](08-experiments-and-artifacts.md).
 

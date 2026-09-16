@@ -140,8 +140,8 @@ configuration and diagnostics. It intentionally does not claim resumable
 training: optimizer states, observation normalization, RNG states, counters,
 rollout position, and lineage are absent.
 
-Before a long learning run, ALiGn needs an atomic recovery checkpoint that
-preserves those states and falls back safely after an interrupted or corrupt
-write. After recovery passes, the collector and updater can be joined into a
-short task-connected simulator learning run with raw per-update and flight
-metrics.
+The separate [training recovery contract](18-training-recovery.md) now preserves
+those states, publishes atomically, and falls back from an interrupted or
+corrupt newest save. The next task joins the collector, updater, and recovery
+store in a short task-connected simulator learning run with raw per-update and
+flight metrics.

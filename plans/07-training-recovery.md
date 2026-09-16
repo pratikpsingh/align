@@ -1,6 +1,6 @@
 # Training recovery and checkpoint integrity
 
-Status: requirements for implementation and testing. No recovery mechanism exists in the current scaffold.
+Status: the minimum learner-state mode, **training resume with environment reset**, is implemented and accepted in CUDA run `20260916T214543.893138IST-10cdc57d`; see [operational evidence](../docs/18-training-recovery.md). Full simulator-state continuation, production trainer scheduling/attempt reporting, best-checkpoint selection, and retention pruning remain requirements.
 
 ## Recovery promise
 
