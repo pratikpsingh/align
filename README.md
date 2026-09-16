@@ -4,7 +4,7 @@ Tools for reproducible research on UAV formation control with local observations
 
 ## Current capabilities
 
-The installable package provides machine diagnostics, versioned JSON reports, local logs, and automated checks. The standalone Isaac Sim startup/CUDA smoke test, deterministic one-drone controller suite, and four-drone ground-to-plane construction probe passed on the lab GPU using fast shutdown. Simulator-independent formation geometry, active component-logged rewards, fixed-capacity masked local observations, vector episode semantics, and recurrent rollout storage are implemented. The one-world and four-world cloned vector task passed on the lab GPU. Neural policies, training, and checkpoint recovery remain future work.
+The installable package provides machine diagnostics, versioned JSON reports, local logs, and automated checks. The standalone Isaac Sim startup/CUDA smoke test, deterministic one-drone controller suite, and four-drone ground-to-plane construction probe passed on the lab GPU using fast shutdown. Simulator-independent formation geometry, active component-logged rewards, fixed-capacity masked local observations, vector episode semantics, and recurrent rollout storage are implemented. The one-world and four-world cloned vector task passed on the lab GPU. The shared LSTM actor, centralized recurrent critic, and transformed bounded-action distribution passed their vendor-PyTorch CUDA contract. Device rollout collection, PPO training, and checkpoint recovery remain future work.
 
 ## Run the diagnostic
 
@@ -38,6 +38,7 @@ Start with the [numbered documentation index](docs/00-README.md). For conceptual
 - [Local observation contract](docs/12-local-observation-contract.md): hard radius, neighbor budget, masks, normalization, critic separation, and topology audit.
 - [Vectorized task environment](docs/13-vectorized-task-environment.md): cloned worlds, step/reset semantics, terminal masks, GPU command, and evidence.
 - [Recurrent rollout contract](docs/14-recurrent-rollout-contract.md): temporal storage, GAE masks, recurrent states, and sequence chunks.
+- [Recurrent policy contract](docs/15-recurrent-policy-contract.md): shared actor, centralized critic, bounded actions, and CUDA evidence.
 - [Lab handoff](docs/06-lab-handoff.md): verified runtime, next task, and a continuation prompt.
 - [Working agreement](AGENTS.md): implementation, teaching, and research-record requirements.
 

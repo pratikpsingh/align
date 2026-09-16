@@ -4,7 +4,7 @@
 
 ALiGn now has a simulator-independent reference for storing recurrent multi-agent rollouts, computing generalized advantage estimates (GAE), and producing episode-safe sequence chunks. It corrects the old implementation's length-one recurrent training path by preserving time order and the actual LSTM hidden and cell states at each chunk boundary.
 
-This component does not yet collect tensors from OmniDrones, define neural networks, sample policy actions, or perform a PPO update. It defines and checks the data contract those components must obey.
+This component does not yet collect tensors from OmniDrones, sample live policy actions, or perform a PPO update. The neural networks now exist as a separate contract; this module defines and checks the storage contract they must populate.
 
 ## Checked production configuration
 
@@ -18,11 +18,11 @@ The default [rollout configuration](../configs/recurrent-rollout.json) matches t
 | actor observation | 55 values per drone |
 | centralized critic state | 80 values per environment |
 | action | 4 values per drone |
-| LSTM state | 1 layer × 128 values for both hidden and cell state |
+| LSTM state | 1 layer × 256 values for both hidden and cell state |
 | training chunk | at most 16 consecutive steps |
 | discount / GAE lambda | 0.99 / 0.95 |
 
-The actor observation and critic state are stored in separate fields. A future shared actor can therefore consume only its declared local 55-value input. Each critic sequence receives the centralized state separately.
+The actor observation and critic state are stored in separate fields. The shared actor can therefore consume only its declared local 55-value input. Each critic sequence receives the centralized state separately.
 
 ## One stored transition
 
@@ -82,14 +82,14 @@ The command creates `runs/recurrent-rollout/<id>/` with:
 - `report.json`: dimensions, checks, advantages, chunk boundaries, and masks;
 - `rollout.log` and `events.jsonl`: IST display timestamps and offset-aware UTC fields.
 
-The accepted local report is `20260916T181145.446683IST-41dc17f2`. Its worked example passed all checks and produced advantages `[3.5, 3.0, 7.0]` for an ordinary transition, a true termination, and a time-limit truncation.
+The current accepted local report is `20260916T182747.544889IST-ce3fbb42`. Its worked example passed all checks and produced advantages `[3.5, 3.0, 7.0]` for an ordinary transition, a true termination, and a time-limit truncation.
 
 ## Validation and limits
 
 CPU tests cover finite values, exact shapes, bounded actions, mutually exclusive terminal flags, zero terminal bootstrap, recurrent reset enforcement, truncation bootstrap, stopped cross-episode GAE traces, padding masks, sequence order, episode-safe chunks, initial LSTM states, and reproducible chunk shuffling.
 
-The reference uses immutable Python tuples so it can be checked without PyTorch or Isaac Sim. The future collector will need a device-resident PyTorch implementation or adapter with parity tests against this reference. A passing rollout report does not establish a correct LSTM network, action distribution, PPO loss, gradient update, learning result, or checkpoint recovery.
+The reference uses immutable Python tuples so it can be checked without PyTorch or Isaac Sim. It currently retains per-agent reward/value lanes and per-agent critic-memory lanes from its initial design. The accepted policy defines one cooperative team value and one critic memory per environment. The collector increment must reconcile those shapes around the team-mean reward and re-run reference parity before PPO; no trainer currently connects the two contracts. A passing rollout report does not establish a correct PPO loss, optimizer update, learning result, or checkpoint recovery.
 
 ## Next implementation
 
-The next bounded component is the shared LSTM actor and centralized recurrent critic, including a transformed bounded continuous-action distribution. Its tests must prove actor/critic input isolation, action/log-probability consistency, dependence on earlier observations, correct reset masks, and parity between full-sequence and chunked unrolling. A device-resident collector can then populate this rollout contract before PPO optimization is added.
+The shared LSTM actor, centralized critic, and transformed bounded distribution are now documented in [the policy contract](15-recurrent-policy-contract.md). The next bounded component is a device-resident collector that populates this rollout contract from the accepted vector task before PPO optimization is added.

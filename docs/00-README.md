@@ -18,5 +18,6 @@ Start here, then follow the numbered files in order. The prefixes describe readi
 12. [Local observation contract](12-local-observation-contract.md): bounded actor inputs, radius and budget rules, masks, critic separation, and topology audit.
 13. [Vectorized task environment](13-vectorized-task-environment.md): step/reset semantics, cloned worlds, tensor shapes, episode masks, GPU acceptance, and artifacts.
 14. [Recurrent rollout contract](14-recurrent-rollout-contract.md): temporal storage, GAE masks, LSTM states, episode-safe chunks, and CPU report.
+15. [Shared recurrent actor and centralized critic](15-recurrent-policy-contract.md): policy architecture, bounded action distribution, CUDA acceptance, and usage.
 
 For beginner explanations, begin with the [learning index](../learning/00-README.md). For research scope and intended implementation, use the [planning index](../plans/00-README.md). Setup instructions distinguish CPU contracts, implemented simulator behavior, and pending research validation.

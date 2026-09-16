@@ -14,7 +14,7 @@ The submission includes established descriptions, unfinished annotations, propos
 
 ## Retained capability register
 
-IDs identify requirements and experiments; they do not imply implementation order. The register states final capability-level acceptance requirements; supporting geometry, task, reward, observation, vector-environment, and rollout contracts are implemented, while learned-policy evidence remains pending.
+IDs identify requirements and experiments; they do not imply implementation order. The register states final capability-level acceptance requirements; supporting geometry, task, reward, observation, vector-environment, rollout, and recurrent-network contracts are implemented, while collection, PPO, recovery, and learned-policy evidence remain pending.
 
 | ID | Requirement | Source evidence or gap | Acceptance evidence |
 |---|---|---|---|

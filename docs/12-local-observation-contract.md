@@ -8,7 +8,7 @@ ALiGn now has a simulator-independent observation builder for a shared decentral
 - radius filtering happens before the neighbor budget, with no minimum-neighbor filling outside the radius;
 - fixed padding has an explicit validity mask.
 
-The builder and offline auditor are implemented and CPU-tested. The accepted four-drone physical trajectory has been audited. The vectorized task now consumes the contract; its cloned-physics acceptance is documented separately. No neural policy consumes these observations yet.
+The builder and offline auditor are implemented and CPU-tested. The accepted four-drone physical trajectory has been audited. The vectorized task now consumes the contract; its cloned-physics acceptance is documented separately. The recurrent actor now defines this input shape, but a device collector has not yet fed live task observations into it.
 
 ## Measurement and coordinate assumptions
 

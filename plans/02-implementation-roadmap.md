@@ -36,13 +36,16 @@ Acceptance: simple controlled motion behaves in the correct axis/units; reset an
 
 Dependencies: stable task contracts and reward/termination semantics.
 
-- [ ] Implement a shared actor with a fixed-capacity masked or set-based neighbor encoder, LSTM memory, and an explicitly defined continuous-action distribution.
+- [x] Implement a shared actor over the fixed-capacity masked neighbor observation, LSTM memory, and an explicitly transformed continuous-action distribution. Run `20260916T183350.312358IST-f57f1110` passed all 18 vendor-PyTorch CUDA checks.
 - [ ] Keep centralized critic inputs separate from actor inputs. Normalize observations using saved training statistics.
+  - [x] Actor and critic APIs, recurrent state, inputs, and parameters are separate; the actor accepts only the 55-value local vector and the critic accepts the 80-value training state.
+  - [ ] Implement, checkpoint, and restore empirical observation normalization if it improves on the current declared feature scaling.
 - [ ] Implement rollout collection, GAE, PPO updates, actual temporal sequence unrolling, and per-agent recurrent resets.
   - [x] Define and CPU-validate time-major rollout storage, separate bootstrap/trace/reset masks, GAE, initial LSTM states, padding masks, and episode-safe chunks. Device-resident collection and PPO remain pending.
-- [ ] Preserve sequence ordering, chunk boundaries, initial recurrent states, and valid-sample masks during minibatching.
+- [x] Preserve sequence ordering, chunk boundaries, initial recurrent states, and valid-sample masks during minibatching. CPU chunks are episode-safe; the CUDA actor/critic exactly matched full versus two-chunk evaluation.
 - [ ] Handle true termination and time-limit truncation correctly, using the final observation where bootstrap is appropriate.
 - [ ] Demonstrate finite gradients/updates, episode isolation, and dependence on prior observations in a meaningful memory check.
+  - [x] The CUDA tensor probe demonstrated finite nonzero gradients, exact reset isolation, and measurable dependence on earlier observations. An optimizer update and task-connected learning check remain pending.
 
 Acceptance: recurrence is trained across time rather than as independent length-one samples; the actor receives no undeclared global data; reset memory cannot leak between episodes. A small simulator learning run produces interpretable diagnostics, without claiming final performance.
 
