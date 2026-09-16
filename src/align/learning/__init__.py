@@ -1,6 +1,7 @@
 """Learning contracts that remain independent of simulator imports."""
 
 from align.learning.collector_config import CollectorProbeConfig
+from align.learning.ppo_config import RecurrentPPOConfig
 from align.learning.rollout import (
     ActorSequenceChunk,
     CriticSequenceChunk,
@@ -12,6 +13,7 @@ from align.learning.rollout import (
 )
 
 __all__ = [
+    "RecurrentPPOConfig",
     "CollectorProbeConfig",
     "ActorSequenceChunk",
     "CriticSequenceChunk",

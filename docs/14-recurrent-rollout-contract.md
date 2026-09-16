@@ -4,7 +4,7 @@
 
 ALiGn now has a simulator-independent reference for storing recurrent multi-agent rollouts, computing generalized advantage estimates (GAE), and producing episode-safe sequence chunks. It corrects the old implementation's length-one recurrent training path by preserving time order and the actual LSTM hidden and cell states at each chunk boundary.
 
-This module is the simulator-independent reference. The device implementation now collects tensors from OmniDrones and checks its results against this reference. PPO updates remain unimplemented.
+This module is the simulator-independent reference. The device implementation collects tensors from OmniDrones and checks its results against this reference. The recurrent PPO updater now consumes the same sequence-chunk contract.
 
 ## Checked production configuration
 
@@ -88,8 +88,8 @@ The current accepted local report is `20260916T184837.139372IST-43d6b59f`. Its w
 
 CPU tests cover finite values, exact shapes, bounded actions, mutually exclusive terminal flags, zero terminal bootstrap, recurrent reset enforcement, truncation bootstrap, stopped cross-episode GAE traces, padding masks, sequence order, episode-safe chunks, initial LSTM states, and reproducible chunk shuffling.
 
-The reference uses immutable Python tuples so it can be checked without PyTorch or Isaac Sim. It defines one cooperative team reward, value, and critic-memory lane per environment, plus one actor-memory lane per drone. The accepted device collector matched its GAE, returns, and chunk metadata. A passing rollout report and collector do not establish a correct PPO loss, optimizer update, learning result, or checkpoint recovery.
+The reference uses immutable Python tuples so it can be checked without PyTorch or Isaac Sim. It defines one cooperative team reward, value, and critic-memory lane per environment, plus one actor-memory lane per drone. The accepted device collector matched its GAE, returns, and chunk metadata, and the accepted PPO probe validated masked optimizer updates. These isolated checks do not establish a task-connected learning result or checkpoint recovery.
 
 ## Next implementation
 
-The shared LSTM actor, centralized critic, and transformed bounded distribution are documented in [the policy contract](15-recurrent-policy-contract.md). Their live connection is documented in [the device collector contract](16-device-recurrent-collector.md). The next bounded component is a masked recurrent PPO update probe.
+The shared LSTM actor, centralized critic, and transformed bounded distribution are documented in [the policy contract](15-recurrent-policy-contract.md). Their live connection is documented in [the device collector contract](16-device-recurrent-collector.md), and the masked update is documented in [the optimizer contract](17-recurrent-ppo-update.md). The next bounded component is recoverable training state.

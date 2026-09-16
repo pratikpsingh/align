@@ -143,8 +143,8 @@ construction, and CPU/device parity for an untrained stochastic policy. It does
 not establish a correct PPO objective, optimizer update, learned flight, or
 recoverable training.
 
-The next bounded component is a recurrent MAPPO update probe. It should compute
-masked clipped actor and value losses over these chunks, apply finite optimizer
-updates, report KL/clip/entropy/gradient diagnostics, and verify that padding
-cannot change an update. Recoverable checkpoint state follows before sustained
-training.
+The recurrent MAPPO update probe now computes masked clipped actor and value
+losses, applies finite optimizer updates, reports KL/clip/entropy/gradient
+diagnostics, and verifies that padding cannot change an update; see
+[the optimizer contract](17-recurrent-ppo-update.md). Recoverable checkpoint
+state follows before sustained training.

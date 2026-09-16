@@ -73,4 +73,4 @@ The probe did not start Isaac Sim and used random tensors. It proves the neural 
 
 A collector now connects four pieces in the project: the vector task, local/global observations, the recurrent policy, and rollout storage. It resets actor memory for only the drones in finished environments, resets one critic memory per finished environment, and evaluates the final pre-reset observation when a time limit needs bootstrapping.
 
-The accepted live collector matched the CPU reference and reevaluated its stored probabilities and values. The next component is PPO optimization. This order makes a learning failure easier to locate: task transition, memory handling, stored probability, return calculation, or optimizer.
+The accepted live collector matched the CPU reference and reevaluated its stored probabilities and values. The later PPO probe validated finite masked optimizer updates and padding invariance. Keeping these contracts separate makes a future learning failure easier to locate: task transition, memory handling, stored probability, return calculation, optimizer, or recovery.

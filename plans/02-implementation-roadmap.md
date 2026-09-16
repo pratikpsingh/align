@@ -43,11 +43,11 @@ Dependencies: stable task contracts and reward/termination semantics.
 - [ ] Implement rollout collection, GAE, PPO updates, actual temporal sequence unrolling, and per-agent recurrent resets.
   - [x] Define and CPU-validate time-major rollout storage, separate bootstrap/trace/reset masks, GAE, initial LSTM states, padding masks, and episode-safe chunks.
   - [x] Collect a device-resident live rollout with per-drone actor memory, per-environment critic memory, partial resets, episode-safe chunks, and CPU-reference parity. Accepted run `20260916T190924.021233IST-667b7fa8` passed all device and host checks.
-  - [ ] Implement and validate recurrent PPO losses and optimizer updates.
+  - [x] Implement and validate masked recurrent PPO losses and optimizer updates. CUDA run `20260916T210604.064887IST-87a056c2` passed all 14 finite-update, clipping, team-advantage, and padding-invariance checks on a synthetic sequence fixture.
 - [x] Preserve sequence ordering, chunk boundaries, initial recurrent states, and valid-sample masks during minibatching. CPU chunks are episode-safe; the CUDA actor/critic exactly matched full versus two-chunk evaluation.
 - [x] Handle true termination and time-limit truncation correctly, using the final observation where bootstrap is appropriate. The accepted collector observed both boundary types and verified zero terminal versus finite truncation bootstraps.
 - [ ] Demonstrate finite gradients/updates, episode isolation, and dependence on prior observations in a meaningful memory check.
-  - [x] The CUDA tensor probe demonstrated finite nonzero gradients, exact reset isolation, and measurable dependence on earlier observations. An optimizer update and task-connected learning check remain pending.
+  - [x] The CUDA tensor probes demonstrated finite nonzero gradients and updates, exact reset isolation, measurable dependence on earlier observations, and update invariance to corrupted padding. A task-connected learning check remains pending.
 
 Acceptance: recurrence is trained across time rather than as independent length-one samples; the actor receives no undeclared global data; reset memory cannot leak between episodes. A small simulator learning run produces interpretable diagnostics, without claiming final performance.
 

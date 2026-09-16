@@ -4,7 +4,7 @@ Tools for reproducible research on UAV formation control with local observations
 
 ## Current capabilities
 
-The installable package provides machine diagnostics, versioned JSON reports, local logs, and automated checks. The standalone Isaac Sim startup/CUDA smoke test, deterministic one-drone controller suite, and four-drone ground-to-plane construction probe passed on the lab GPU using fast shutdown. Simulator-independent formation geometry, active component-logged rewards, fixed-capacity masked local observations, vector episode semantics, and recurrent rollout storage are implemented. The one-world and four-world cloned vector task passed on the lab GPU. The shared LSTM actor, centralized recurrent critic, transformed bounded-action distribution, and live device recurrent collector passed their CUDA contracts. PPO training and checkpoint recovery remain future work.
+The installable package provides machine diagnostics, versioned JSON reports, local logs, and automated checks. The standalone Isaac Sim startup/CUDA smoke test, deterministic one-drone controller suite, and four-drone ground-to-plane construction probe passed on the lab GPU using fast shutdown. Simulator-independent formation geometry, active component-logged rewards, fixed-capacity masked local observations, vector episode semantics, and recurrent rollout storage are implemented. The one-world and four-world cloned vector task passed on the lab GPU. The shared LSTM actor, centralized recurrent critic, transformed bounded-action distribution, live device collector, and masked recurrent PPO optimizer update passed their CUDA contracts. Recoverable task-connected training remains future work.
 
 ## Run the diagnostic
 
@@ -40,6 +40,7 @@ Start with the [numbered documentation index](docs/00-README.md). For conceptual
 - [Recurrent rollout contract](docs/14-recurrent-rollout-contract.md): temporal storage, GAE masks, recurrent states, and sequence chunks.
 - [Recurrent policy contract](docs/15-recurrent-policy-contract.md): shared actor, centralized critic, bounded actions, and CUDA evidence.
 - [Device recurrent collector](docs/16-device-recurrent-collector.md): live rollouts, episode boundaries, CUDA/reference parity, and saved evidence.
+- [Recurrent MAPPO optimizer](docs/17-recurrent-ppo-update.md): clipped temporal losses, optimizer diagnostics, padding invariance, and CUDA evidence.
 - [Lab handoff](docs/06-lab-handoff.md): verified runtime, next task, and a continuation prompt.
 - [Working agreement](AGENTS.md): implementation, teaching, and research-record requirements.
 
