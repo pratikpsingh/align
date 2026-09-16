@@ -20,8 +20,8 @@ class TaskTrainingConfig:
     def __post_init__(self) -> None:
         if self.schema_version != 1:
             raise ValueError("schema_version must be 1")
-        if self.attempts != 2:
-            raise ValueError("the acceptance contract requires exactly two attempts")
+        if type(self.attempts) is not int or self.attempts <= 0:
+            raise ValueError("attempts must be a positive integer")
         if self.updates_per_attempt != 1:
             raise ValueError("the acceptance contract requires one update per attempt")
         if type(self.policy_seed) is not int or self.policy_seed < 0:

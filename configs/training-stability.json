@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "policy_seeds": [41, 73],
+  "updates_per_seed": 3,
+  "evaluation_steps": 800,
+  "max_post_update_approximate_kl": 0.05,
+  "max_post_update_policy_clip_fraction": 0.25,
+  "max_post_update_value_clip_fraction": 0.5,
+  "max_actor_gradient_norm_before_clip": 10.0,
+  "max_critic_gradient_norm_before_clip": 50.0
+}

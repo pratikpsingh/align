@@ -33,7 +33,7 @@ class TaskTrainingConfigTests(unittest.TestCase):
         for values in (
             {key: value for key, value in self.values.items() if key != "attempts"},
             {**self.values, "unknown": True},
-            {**self.values, "attempts": 1},
+            {**self.values, "attempts": 0},
             {**self.values, "updates_per_attempt": 2},
             {**self.values, "policy_seed": -1},
             {**self.values, "stochastic_actions": 1},

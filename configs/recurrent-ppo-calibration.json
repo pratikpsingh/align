@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "actor_learning_rate": 0.0003,
+  "critic_learning_rate": 0.0001,
+  "adam_epsilon": 0.00001,
+  "policy_clip_ratio": 0.2,
+  "value_clip_range": 0.2,
+  "entropy_coefficient": 0.01,
+  "value_loss_coefficient": 0.5,
+  "max_gradient_norm": 0.5,
+  "update_epochs": 1,
+  "normalize_advantages": true,
+  "advantage_epsilon": 1e-8
+}

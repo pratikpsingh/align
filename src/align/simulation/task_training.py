@@ -13,7 +13,7 @@ from align.learning.checkpoint_store import CheckpointStore
 from align.learning.ppo_config import RecurrentPPOConfig
 from align.learning.recovery_config import RecoveryConfig
 from align.learning.rollout import RolloutConfig
-from align.learning.torch_ppo import update_recurrent_ppo
+from align.learning.torch_ppo import evaluate_ppo_diagnostics, update_recurrent_ppo
 from align.learning.torch_recovery import (
     capture_learner_state,
     restore_learner_state,
@@ -365,6 +365,7 @@ def run_training_attempt(
         ppo_config,
     )
     update_seconds = time.perf_counter() - update_started
+    post_update_diagnostics = evaluate_ppo_diagnostics(actor, critic, chunks, ppo_config)
     actor_change = _maximum_parameter_change(actor_before, actor)
     critic_change = _maximum_parameter_change(critic_before, critic)
     completed_updates = start_counters["completed_updates"] + 1
@@ -417,7 +418,7 @@ def run_training_attempt(
 
     diagnostic_values = [
         value for row in update_diagnostics for key, value in row.items() if key != "epoch"
-    ]
+    ] + list(post_update_diagnostics.values())
     tensors = (
         buffer.actor_observations,
         buffer.critic_states,
@@ -492,4 +493,5 @@ def run_training_attempt(
             "attempt_seconds": time.perf_counter() - started,
         },
         "updates": update_diagnostics,
+        "post_update": post_update_diagnostics,
     }

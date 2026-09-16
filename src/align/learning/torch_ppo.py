@@ -126,6 +126,28 @@ def compute_ppo_losses(
     return losses
 
 
+def evaluate_ppo_diagnostics(
+    actor: SharedRecurrentActor,
+    critic: CentralizedRecurrentCritic,
+    chunks: TorchSequenceChunks,
+    config: RecurrentPPOConfig,
+) -> dict:
+    """Measure the stored rollout under current parameters without updating them."""
+    with torch.no_grad():
+        losses = compute_ppo_losses(actor, critic, chunks, config)
+    return {
+        "actor_loss": float(losses.actor.detach().cpu()),
+        "critic_loss": float(losses.critic.detach().cpu()),
+        "policy_loss": float(losses.policy.detach().cpu()),
+        "value_loss": float(losses.value.detach().cpu()),
+        "sampled_action_entropy": float(losses.entropy.detach().cpu()),
+        "approximate_kl": float(losses.approximate_kl.detach().cpu()),
+        "policy_clip_fraction": float(losses.clip_fraction.detach().cpu()),
+        "value_clip_fraction": float(losses.value_clip_fraction.detach().cpu()),
+        "explained_variance": float(losses.explained_variance.detach().cpu()),
+    }
+
+
 def _finite_gradients(module: nn.Module) -> bool:
     gradients = [parameter.grad for parameter in module.parameters() if parameter.requires_grad]
     return bool(gradients) and all(

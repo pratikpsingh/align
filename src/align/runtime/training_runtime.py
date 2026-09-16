@@ -217,6 +217,8 @@ def run_main(argv=None) -> int:
 
     root = project_root()
     resolved = load_resolved_config(root, args)
+    if resolved["training"]["attempts"] != 2:
+        raise ValueError("task-training acceptance requires exactly two attempts")
     build_path = args.build_report or Path(
         json.loads((root / ".runtime/latest-build.json").read_text())["report"]
     )
