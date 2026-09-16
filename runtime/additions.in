@@ -1,0 +1,10 @@
+# Complete additional dependency set for the audited drone/controller path.
+# torch, numpy, packaging, PyYAML, scipy and matplotlib come from the base image.
+# Upstream task/training extras are intentionally outside this minimal runtime.
+torchrl==0.3.1
+tensordict==0.3.2
+cloudpickle==3.0.0
+wheel==0.43.0
+uv==0.9.28
+# Vendor matplotlib's PDF backend imports fontTools, absent from base metadata.
+fonttools==4.53.1

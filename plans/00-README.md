@@ -71,3 +71,5 @@ Sources: [student submission](../../papers/2026_Distributed_MARL_Submission.pdf)
 Implementation record, 2026-09-15: completed the runnable diagnostic foundation and its topic-based learning explanation; retained simulator/version selection and real-GPU checks as unresolved work.
 
 Current handoff, 2026-09-16: [verified simulator result and next lab task](../docs/06-lab-handoff.md). Start with a pinned OmniDrones environment and controlled single-drone/reset checks, not policy training.
+
+Runtime continuation, 2026-09-16: the [pinned OmniDrones integration](../docs/07-omnidrones-runtime.md) and [deterministic controller check](../docs/08-single-drone-control.md) now exist. Read their current evidence before interpreting the older status paragraphs above. The shared package is Python >=3.10 compatible while host orchestration stays on 3.12.

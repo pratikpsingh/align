@@ -3,8 +3,11 @@ name = "align"
 version = "0.1.0"
 description = "Reproducible tools for local-coordination UAV formation research"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.10"
 dependencies = []
+
+[project.optional-dependencies]
+reporting = ["matplotlib==3.8.4", "numpy==1.26.4"]
 
 [project.scripts]
 align = "align.cli:main"
@@ -17,10 +20,10 @@ build-backend = "uv_build"
 dev = ["ruff>=0.14,<1"]
 
 [tool.uv.build-backend]
-source-include = ["scripts/**", "docs/**", "tests/**", "uv.lock", ".python-version", "AGENTS.md"]
+source-include = ["scripts/**", "docs/**", "tests/**", "uv.lock", ".python-version", "AGENTS.md", "runtime/**", "configs/**", "learning/**", "plans/**"]
 
 [tool.ruff]
-target-version = "py312"
+target-version = "py310"
 line-length = 100
 
 [tool.ruff.lint]

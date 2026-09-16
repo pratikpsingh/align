@@ -1,0 +1,20 @@
+--- a/omni_drones/views/__init__.py
++++ b/omni_drones/views/__init__.py
+@@ -244,7 +244,7 @@
+             return None
+ 
+     def get_world_poses(
+-        self, env_indices: Optional[torch.Tensor] = None, clone: bool = True
++        self, env_indices: Optional[torch.Tensor] = None, clone: bool = True, usd: bool = True
+     ) -> Tuple[torch.Tensor, torch.Tensor]:
+         indices = self._resolve_env_indices(env_indices)
+         if self._physics_view is not None:
+@@ -459,7 +459,7 @@
+         return self
+ 
+     def get_world_poses(
+-        self, env_indices: Optional[torch.Tensor] = None, clone: bool = True
++        self, env_indices: Optional[torch.Tensor] = None, clone: bool = True, usd: bool = True
+     ) -> Tuple[torch.Tensor, torch.Tensor]:
+         indices = self._resolve_env_indices(env_indices)
+         pos, rot = super().get_world_poses(indices, clone)

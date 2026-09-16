@@ -2,9 +2,9 @@
 
 ## What works now
 
-ALiGn currently provides a CPU-capable diagnostic command, saved reports, local logs, and automated checks. It has no training command or OmniDrones environment yet. The runtime package uses the Python standard library; Ruff is a development dependency.
+ALiGn currently provides a CPU-capable diagnostic command, saved reports, local logs, and automated checks. It also provides a pinned OmniDrones single-drone integration; see [runtime setup](07-omnidrones-runtime.md) and its separately recorded lab acceptance. There is no training command. Host diagnostics use the Python standard library; Ruff is a development dependency. The optional reporting extra adds locked plotting libraries. Simulator dependencies are separately pinned.
 
-Validated locally on Linux x86_64 with Python 3.12.3 and uv 0.9.28. A user-supplied lab report also records successful diagnostic execution with Python 3.12.14 and uv 0.12.12. The current lockfile selects Ruff 0.16.7. Python 3.12 is the development interpreter pin, not a validated OmniDrones/Isaac Sim choice. Other operating systems and Python versions have not been validated; detailed RAM probing currently supports Linux.
+Validated locally on Linux x86_64 with Python 3.12.3 and uv 0.9.28. A user-supplied lab report also records successful diagnostic execution with Python 3.12.14 and uv 0.12.12. The current lockfile selects Ruff 0.16.7. Python 3.12 is the host development pin. The shared package supports Python >=3.10; the simulator uses its separate bundled Python 3.10.14. Other operating systems and Python versions have not been validated; detailed RAM probing currently supports Linux.
 
 ## Install the development project
 

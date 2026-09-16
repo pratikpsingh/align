@@ -2,6 +2,10 @@
 
 Snapshot reviewed on 2026-09-16. This document combines the verified runtime boundary and a ready-to-paste agent prompt. Read newer run evidence and code before treating any snapshot as current. No new simulator execution was performed during this handoff.
 
+## Newer integration work
+
+The snapshot below is retained as history. See [OmniDrones runtime](07-omnidrones-runtime.md) and [single-drone control](08-single-drone-control.md) for current source pins, Python compatibility changes, build instructions, and lab attempts.
+
 ## Confirmed result
 
 Run 20260916T010519.212064IST-5253d3c9 passed the basic Isaac Sim check on host GPU 0. The report and console progress agree, and their probe hash matches the current local script. CUDA arithmetic returned 1024.0, exactly one A4000 was visible, and 20 application updates completed. Exit status was 0. Total time was 57.1569 seconds, including about 53.0836 seconds in application startup; this is not training throughput.

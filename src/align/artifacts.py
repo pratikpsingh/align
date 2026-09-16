@@ -6,7 +6,7 @@ import os
 import tempfile
 from collections.abc import Iterator
 from contextlib import contextmanager
-from datetime import UTC, datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from uuid import uuid4
 
@@ -22,7 +22,7 @@ def as_ist(timestamp: str) -> str:
 
 
 def utc_now() -> str:
-    return datetime.now(UTC).isoformat()
+    return datetime.now(timezone.utc).isoformat()
 
 
 def create_run_directory(output_dir: Path) -> Path:
@@ -33,7 +33,7 @@ def create_run_directory(output_dir: Path) -> Path:
     return run_dir
 
 
-def write_json_atomic(path: Path, value: dict) -> None:
+def write_json_atomic(path: Path, value: dict, *, mode: int | None = None) -> None:
     """Replace one JSON file after serialization and fsync; preserve old data on failure.
 
     Uses a temporary file on the same filesystem. This is not a complete training
@@ -45,6 +45,8 @@ def write_json_atomic(path: Path, value: dict) -> None:
             mode="w", encoding="utf-8", dir=path.parent, prefix=f".{path.name}.", delete=False
         ) as stream:
             temporary = Path(stream.name)
+            if mode is not None:
+                os.fchmod(stream.fileno(), mode)
             json.dump(value, stream, indent=2, sort_keys=True, allow_nan=False)
             stream.write("\n")
             stream.flush()
@@ -67,7 +69,7 @@ class EventFormatter(logging.Formatter):
 
     def format(self, record: logging.LogRecord) -> str:
         event = {
-            "timestamp_utc": datetime.fromtimestamp(record.created, UTC).isoformat(),
+            "timestamp_utc": datetime.fromtimestamp(record.created, timezone.utc).isoformat(),
             "timestamp_ist": datetime.fromtimestamp(record.created, IST).isoformat(),
             "level": record.levelname,
             "run_id": record.name.removeprefix("align.doctor."),

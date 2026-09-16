@@ -1,0 +1,22 @@
+{
+  "brake_seconds": 2.0,
+  "calibration_run_id": "20260916T015409.084496IST-8edb58c1",
+  "calibration_status": "frozen",
+  "command_seconds": 3.0,
+  "command_speed_m_s": 0.25,
+  "control_decimation": 1,
+  "cross_axis_tolerance_m": 0.01,
+  "hover_position_tolerance_m": 0.01,
+  "hover_seconds": 6.0,
+  "hover_speed_tolerance_m_s": 0.01,
+  "initial_height_m": 1.5,
+  "max_speed_m_s": 0.5,
+  "minimum_axis_displacement_m": 0.5,
+  "physics_dt": 0.01,
+  "repetitions": 2,
+  "reset_trajectory_tolerance": 0.0002,
+  "schema_version": 1,
+  "seed": 17,
+  "settle_seconds": 1.0,
+  "velocity_tolerance_m_s": 0.04
+}

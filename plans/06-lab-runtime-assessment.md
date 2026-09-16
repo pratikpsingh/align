@@ -76,3 +76,7 @@ The supplied run 20260915T192028.862699Z-6a871ddd reached app ready with an acti
 ## Successful fast-mode retry
 
 Run 20260916T010519.212064IST-5253d3c9 passed with exit 0 in 57.1569 seconds. It reported Python 3.10.14, PyTorch 2.2.2+cu118, CUDA build 11.8, one A4000, CUDA sum 1024.0, and 20 application updates. The pre-close record and probe hash match the supplied console and current script. This validates the isolated runtime boundary, not the full OmniDrones dependency set. See [lab handoff](../docs/06-lab-handoff.md) for next acceptance criteria.
+
+## Pinned integration and current runtime record
+
+The [runtime guide](../docs/07-omnidrones-runtime.md) records the selected OmniDrones commit, exact Docker/toolkit versions, dependency ownership, and completed image build. Isaac Lab v1.1.0 was inspected but is not needed by the basic drone/controller import path, so it remains uninstalled. The [control guide](../docs/08-single-drone-control.md) records actual calibration attempts, including the initial unresolved visual material failure. It supersedes the earlier candidate-only discussion without deleting it.

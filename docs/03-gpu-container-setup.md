@@ -1,6 +1,6 @@
 # Preparing GPU container access on the lab machine
 
-Status: the user supplied a successful single-GPU container inventory result, reviewed on 2026-09-16. Host installation commands were not executed by this assistant. Isaac Sim acquisition and execution remain pending.
+Current status: the pinned Isaac Sim startup test and subsequent OmniDrones calibration have executed on the lab. See [current runtime setup and exact tool versions](07-omnidrones-runtime.md). The acquisition/pending statements below are historical records from initial preparation. Host installation commands were not executed by this assistant.
 
 ## Purpose and prerequisites
 

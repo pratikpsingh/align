@@ -14,8 +14,9 @@ These notes explain the project by topic. They will grow alongside the implement
 | [Simulator startup](04-simulator-startup.md) | Why we test the image, CUDA arithmetic, and application lifecycle before drone behavior |
 | [Training, results, and recovery](05-training-results-and-recovery.md) | What training saves, how to read results, what a checkpoint restores, and how videos can be made later |
 | [From startup to drone control](06-from-startup-to-drone-control.md) | What passed, why controller/reset checks come next, and how to continue on the lab |
+| [Runtime and controller contract](07-runtime-and-controller-contract.md) | Velocity commands, rotor forces, reset memory, pinned environments and flight evidence |
 
-The [planning index](../plans/00-README.md) contains implementation requirements and research decisions. The runnable package and diagnostic are implemented and checked on the laptop. Basic simulator startup/CUDA execution has passed on the lab; drone physics and training remain unimplemented; each explanation distinguishes current code from future work.
+The [planning index](../plans/00-README.md) contains implementation requirements and research decisions. The runnable package and diagnostic are implemented and checked on the laptop. Basic simulator startup/CUDA execution has passed on the lab; the single-drone integration is implemented and undergoing lab calibration; training remains unimplemented; each explanation distinguishes current code from future work.
 
 ## How future explanations will work
 

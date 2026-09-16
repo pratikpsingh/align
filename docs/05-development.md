@@ -64,3 +64,7 @@ Build artifacts and diagnostics are ignored by Git. Preserve source and public d
 The next runtime work is to collect the lab inventory, select a supported simulator/Python pairing, and run a minimal drone/controller check. Keep Python 3.12 labeled as the current development pin until that pairing is validated. Do not infer readiness from the presence of package metadata.
 
 For every substantive implementation increment, explain its purpose, inputs/outputs, a small worked example, code paths, verification, and limits in the topic-based learning notes. Public docs must remain sufficient when the ignored notes are absent.
+
+## Single-drone integration
+
+The [runtime guide](07-omnidrones-runtime.md) describes separate vendor and host dependencies. CPU imports of `align.simulation.contract` and `align.simulation.report` do not load the simulator. Run the test suite on Python 3.10 as well as the host pin when changing shared code. The [learning explanation](../learning/07-runtime-and-controller-contract.md) connects the implementation to its measurements.

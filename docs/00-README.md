@@ -10,4 +10,7 @@ Start here, then follow the numbered files in order. The prefixes describe readi
 
 6. [Lab handoff](06-lab-handoff.md): verified simulator result and a detailed agent continuation prompt.
 
+7. [OmniDrones runtime](07-omnidrones-runtime.md): exact source/dependency pins, Python boundary, image build and backup.
+8. [Single-drone control](08-single-drone-control.md): frames, actions, controller/reset contract, measurements and lab evidence.
+
 For beginner explanations, begin with the [learning index](../learning/00-README.md). For research scope and intended implementation, use the [planning index](../plans/00-README.md). Setup instructions distinguish implemented tools from pending lab validation.

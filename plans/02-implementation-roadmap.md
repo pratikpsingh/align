@@ -11,8 +11,8 @@ CPU verification and simulator verification are separate evidence. The laptop ca
 Dependencies: access to the current scaffold and the lab machine's hardware/runtime information.
 
 - [x] Receive lab inventory: GPU models and per-device VRAM, driver, OS, host RAM, and filesystem capacity. GPU allocation/container access and simulator-build compatibility still need verification.
-- [ ] Select an OmniDrones revision and compatible Isaac Sim/Python/PyTorch/TorchRL/TensorDict combination. Review licenses and asset requirements.
-- [ ] Validate uv integration without modifying the simulator's managed Python environment accidentally. Align Python constraints and lockfile with the chosen runtime.
+- [x] Select an OmniDrones revision and compatible Isaac Sim/Python/PyTorch/TorchRL/TensorDict combination. Review licenses and asset requirements; see [pinned runtime](../docs/07-omnidrones-runtime.md).
+- [x] Validate uv integration in a derived image while preserving vendor PyTorch. Audit shared Python >=3.10 compatibility and maintain separate host/additional-runtime locks.
 - [x] Establish the src package, validated diagnostic configuration, CLI, offline logging, and machine-readable inventory reports. Training configuration and simulator compatibility checks remain future work.
 - [x] Run the isolated headless Isaac Sim startup/CUDA check on the lab; fast-mode run 20260916T010519.212064IST-5253d3c9 passed.
 - [ ] Integrate pinned OmniDrones dependencies and run an actual drone observation/action/reset check. Record exact commands, trajectories, and outcomes.
@@ -23,7 +23,7 @@ Acceptance: reproducible setup from a clean checkout; CPU imports do not initial
 
 Dependencies: configuration foundation; GPU runtime for integration checks.
 
-- [ ] Specify observation/action frames, units, tensor shapes, masks, control frequency, controller state, and limits.
+- [ ] Specify task observation/action frames, units, tensor shapes, masks, control frequency, controller state, and limits. The single-drone instrumentation/controller subset is now documented and calibrated; task masks remain future work.
 - [ ] Implement tested cube/sphere/pyramid/plane templates, target assignment, formation metrics, and group-aware data structures.
 - [ ] Implement reset, ground takeoff, goal tracking, dwell-based success, time limits, and explicit termination reasons.
 - [ ] Integrate a calibrated low-level controller and validate commanded motion before policy learning.
@@ -104,3 +104,7 @@ Dependencies: stable core results and preserved comparison configurations. Exten
 - [ ] Run artifacts and the ignored personal documentation have an explicit backup procedure.
 
 Time estimates and final experiment budgets will follow runtime smoke tests and measured collection/update/checkpoint timings. Do not estimate months of GPU work from another simulator's reported throughput.
+
+## Single-drone evidence update, 2026-09-16
+
+The integration and deterministic check are implemented. Calibration completed ten episodes / 6,000 real physics samples, with correct axes, hover recovery, and repeated-reset agreement. The run still failed its overall artifact contract during PDF export and host JSON ingestion. Fixes and frozen tolerances are prepared; final acceptance awaits the user-run Docker command because this agent session lacks Docker access. See [exact attempts and current status](../docs/08-single-drone-control.md). No formation-learning work was started.

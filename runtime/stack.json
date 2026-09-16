@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "base_image": "nvcr.io/nvidia/isaac-sim@sha256:5bd94fce4318ca2f8bf887c4ce3220bfc1cedd303008bf6d6976b0e9e556d173",
+  "omnidrones": {
+    "repository": "https://github.com/btx0424/OmniDrones.git",
+    "revision": "9ce7c2028b71be64d7e748c31f685cd3b54afe27",
+    "license": "MIT"
+  },
+  "isaac_lab": {
+    "revision": "454905bf08c374b6162e6c4c64a320aa6261fbe6",
+    "tag": "v1.1.0",
+    "installed": false,
+    "reason": "Not imported by the audited basic drone/controller path; sensor and task integration deferred."
+  },
+  "vendor_inventory_run": "20260916T013244.627902IST-968f4001",
+  "vendor_required": {
+    "torch": "2.2.2+cu118",
+    "numpy": "1.26.0",
+    "packaging": "23.0",
+    "PyYAML": "6.0.1",
+    "scipy": "1.10.1",
+    "matplotlib": "3.8.4"
+  },
+  "additions": {
+    "torchrl": "0.3.1",
+    "tensordict": "0.3.2",
+    "cloudpickle": "3.0.0",
+    "wheel": "0.43.0",
+    "uv": "0.9.28",
+    "fonttools": "4.53.1"
+  },
+  "python_minor": [
+    3,
+    10
+  ],
+  "scope": "Audited single-drone runtime. OmniDrones training/task extras are not installed."
+}
