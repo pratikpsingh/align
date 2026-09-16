@@ -68,6 +68,6 @@ The checked production dimensions match the accepted OmniDrones vector task. The
 
 ## What this establishes
 
-The current checks establish a correct storage and masking contract. They do not establish that a neural LSTM uses memory, that PPO updates are correct, or that a learned swarm flies well.
+The pure checks establish a correct storage and masking contract. The later live collector matched this reference for GAE, returns, and chunk boundaries while using real task transitions. These results do not establish that PPO updates are correct or that a learned swarm flies well.
 
-The next topic will cover the shared actor, centralized critic, and bounded action distribution. Full-sequence and chunked evaluations must agree when given the same initial recurrent state and masks.
+The next topics cover the shared actor, centralized critic, bounded action distribution, and their live task-connected collector. Full-sequence and chunked evaluations agree when given the same initial recurrent state and masks.

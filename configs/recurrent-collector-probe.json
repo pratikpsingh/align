@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "policy_seed": 29,
+  "forced_termination_step": 30,
+  "forced_termination_environment": 1,
+  "stochastic_actions": true,
+  "require_true_termination": true,
+  "require_truncation": true
+}

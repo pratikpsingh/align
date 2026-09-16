@@ -4,7 +4,7 @@
 
 ALiGn now has a simulator-independent reference for storing recurrent multi-agent rollouts, computing generalized advantage estimates (GAE), and producing episode-safe sequence chunks. It corrects the old implementation's length-one recurrent training path by preserving time order and the actual LSTM hidden and cell states at each chunk boundary.
 
-This component does not yet collect tensors from OmniDrones, sample live policy actions, or perform a PPO update. The neural networks now exist as a separate contract; this module defines and checks the storage contract they must populate.
+This module is the simulator-independent reference. The device implementation now collects tensors from OmniDrones and checks its results against this reference. PPO updates remain unimplemented.
 
 ## Checked production configuration
 
@@ -30,7 +30,7 @@ A rollout begins with a `RecurrentFrame`, which contains the observations and ac
 
 - the bounded action actually executed;
 - its old policy log probability;
-- per-agent reward and value estimate;
+- one cooperative team reward and one centralized value estimate per environment;
 - the value of the final, pre-reset next observation for bootstrapping;
 - true-termination and time-limit-truncation flags;
 - the next frame used for the following action, after any required environment reset.
@@ -82,14 +82,14 @@ The command creates `runs/recurrent-rollout/<id>/` with:
 - `report.json`: dimensions, checks, advantages, chunk boundaries, and masks;
 - `rollout.log` and `events.jsonl`: IST display timestamps and offset-aware UTC fields.
 
-The current accepted local report is `20260916T182747.544889IST-ce3fbb42`. Its worked example passed all checks and produced advantages `[3.5, 3.0, 7.0]` for an ordinary transition, a true termination, and a time-limit truncation.
+The current accepted local report is `20260916T184837.139372IST-43d6b59f`. Its worked example passed all checks and produced advantages `[3.5, 3.0, 7.0]` for an ordinary transition, a true termination, and a time-limit truncation.
 
 ## Validation and limits
 
 CPU tests cover finite values, exact shapes, bounded actions, mutually exclusive terminal flags, zero terminal bootstrap, recurrent reset enforcement, truncation bootstrap, stopped cross-episode GAE traces, padding masks, sequence order, episode-safe chunks, initial LSTM states, and reproducible chunk shuffling.
 
-The reference uses immutable Python tuples so it can be checked without PyTorch or Isaac Sim. It currently retains per-agent reward/value lanes and per-agent critic-memory lanes from its initial design. The accepted policy defines one cooperative team value and one critic memory per environment. The collector increment must reconcile those shapes around the team-mean reward and re-run reference parity before PPO; no trainer currently connects the two contracts. A passing rollout report does not establish a correct PPO loss, optimizer update, learning result, or checkpoint recovery.
+The reference uses immutable Python tuples so it can be checked without PyTorch or Isaac Sim. It defines one cooperative team reward, value, and critic-memory lane per environment, plus one actor-memory lane per drone. The accepted device collector matched its GAE, returns, and chunk metadata. A passing rollout report and collector do not establish a correct PPO loss, optimizer update, learning result, or checkpoint recovery.
 
 ## Next implementation
 
-The shared LSTM actor, centralized critic, and transformed bounded distribution are now documented in [the policy contract](15-recurrent-policy-contract.md). The next bounded component is a device-resident collector that populates this rollout contract from the accepted vector task before PPO optimization is added.
+The shared LSTM actor, centralized critic, and transformed bounded distribution are documented in [the policy contract](15-recurrent-policy-contract.md). Their live connection is documented in [the device collector contract](16-device-recurrent-collector.md). The next bounded component is a masked recurrent PPO update probe.

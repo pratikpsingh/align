@@ -1,4 +1,4 @@
-"""Checks for temporal rollout order, recurrent resets, and return masks."""
+"""Checks for cooperative returns, temporal order, and separate recurrent lanes."""
 
 import json
 import math
@@ -31,7 +31,7 @@ def config(**changes):
     return RolloutConfig.from_dict(values)
 
 
-def memory(cfg, marker):
+def actor_memory(cfg, marker):
     return tuple(
         tuple(
             tuple(
@@ -47,8 +47,20 @@ def memory(cfg, marker):
     )
 
 
+def critic_memory(cfg, marker):
+    return tuple(
+        tuple(
+            tuple(float(marker + env * 100 + layer) for _ in range(cfg.recurrent_hidden_size))
+            for layer in range(cfg.recurrent_layers)
+        )
+        for env in range(cfg.num_envs)
+    )
+
+
 def frame(cfg, marker, *, zero_memory=False):
-    state = memory(cfg, 0 if zero_memory else marker)
+    memory_marker = 0 if zero_memory else marker
+    actor = actor_memory(cfg, memory_marker)
+    critic = critic_memory(cfg, memory_marker)
     return RecurrentFrame(
         actor_observations=tuple(
             tuple(
@@ -61,10 +73,10 @@ def frame(cfg, marker, *, zero_memory=False):
             tuple(float(1000 + marker) for _ in range(cfg.critic_state_dim))
             for _ in range(cfg.num_envs)
         ),
-        actor_hidden=state,
-        actor_cell=state,
-        critic_hidden=state,
-        critic_cell=state,
+        actor_hidden=actor,
+        actor_cell=actor,
+        critic_hidden=critic,
+        critic_cell=critic,
     )
 
 
@@ -74,13 +86,9 @@ def transition(cfg, reward, bootstrap, *, terminated=False, truncated=False):
         old_log_probs=tuple(
             tuple(-0.5 for _ in range(cfg.num_agents)) for _ in range(cfg.num_envs)
         ),
-        rewards=tuple(
-            tuple(float(reward) for _ in range(cfg.num_agents)) for _ in range(cfg.num_envs)
-        ),
-        values=tuple(tuple(0.0 for _ in range(cfg.num_agents)) for _ in range(cfg.num_envs)),
-        bootstrap_values=tuple(
-            tuple(float(bootstrap) for _ in range(cfg.num_agents)) for _ in range(cfg.num_envs)
-        ),
+        team_rewards=tuple(float(reward) for _ in range(cfg.num_envs)),
+        values=tuple(0.0 for _ in range(cfg.num_envs)),
+        bootstrap_values=tuple(float(bootstrap) for _ in range(cfg.num_envs)),
         terminated=tuple(terminated for _ in range(cfg.num_envs)),
         truncated=tuple(truncated for _ in range(cfg.num_envs)),
     )
@@ -101,10 +109,10 @@ class RecurrentRolloutTests(unittest.TestCase):
         )
 
         advantages = rollout.compute_gae()
-        self.assertEqual([advantages[t][0][0] for t in range(3)], [3.5, 3.0, 7.0])
-        self.assertEqual([rollout.returns[t][0][0] for t in range(3)], [3.5, 3.0, 7.0])
+        self.assertEqual([advantages[t][0] for t in range(3)], [3.5, 3.0, 7.0])
+        self.assertEqual([rollout.returns[t][0] for t in range(3)], [3.5, 3.0, 7.0])
 
-    def test_chunks_keep_order_and_never_cross_episode_boundary(self):
+    def test_actor_and_critic_chunks_are_separate_and_episode_safe(self):
         cfg = config()
         rollout = RecurrentRollout(cfg, frame(cfg, 10))
         rollout.append(transition(cfg, 1, 2), frame(cfg, 11))
@@ -120,25 +128,28 @@ class RecurrentRolloutTests(unittest.TestCase):
 
         chunks = rollout.sequence_chunks()
         self.assertEqual(
-            [(item.start_step, item.valid_length) for item in chunks], [(0, 2), (2, 1)]
+            [(item.start_step, item.valid_length) for item in chunks.actor], [(0, 2), (2, 1)]
         )
-        self.assertEqual(chunks[0].actor_observations, ((10.0, 10.0), (11.0, 11.0)))
-        self.assertEqual(chunks[0].critic_states[0], (1010.0, 1010.0, 1010.0))
-        self.assertNotIn(1010.0, chunks[0].actor_observations[0])
-        self.assertEqual(chunks[1].valid_mask, (1.0, 0.0))
-        self.assertEqual(chunks[1].actor_observations[1], (0.0, 0.0))
-        self.assertEqual(chunks[1].initial_actor_hidden, ((0.0, 0.0),))
+        self.assertEqual(
+            [(item.start_step, item.valid_length) for item in chunks.critic], [(0, 2), (2, 1)]
+        )
+        self.assertEqual(chunks.actor[0].actor_observations, ((10.0, 10.0), (11.0, 11.0)))
+        self.assertEqual(chunks.critic[0].critic_states[0], (1010.0, 1010.0, 1010.0))
+        self.assertEqual(chunks.actor[1].valid_mask, (1.0, 0.0))
+        self.assertEqual(chunks.actor[1].actor_observations[1], (0.0, 0.0))
+        self.assertEqual(chunks.actor[1].initial_hidden, ((0.0, 0.0),))
+        self.assertEqual(chunks.critic[1].initial_hidden, ((0.0, 0.0),))
 
-    def test_done_transition_requires_zero_next_recurrent_state(self):
+    def test_done_transition_requires_zero_actor_and_critic_memory(self):
         cfg = config(horizon=1, chunk_length=1)
         rollout = RecurrentRollout(cfg, frame(cfg, 1))
-        with self.assertRaisesRegex(ValueError, "recurrent state must reset"):
+        with self.assertRaisesRegex(ValueError, "actor and critic memory must reset"):
             rollout.append(
                 transition(cfg, 1, 0, terminated=True),
                 frame(cfg, 2),
             )
 
-    def test_true_termination_rejects_nonzero_bootstrap(self):
+    def test_true_termination_rejects_nonzero_team_bootstrap(self):
         cfg = config(horizon=1, chunk_length=1)
         rollout = RecurrentRollout(cfg, frame(cfg, 1))
         with self.assertRaisesRegex(ValueError, "zero bootstrap"):
@@ -184,7 +195,7 @@ class RecurrentRolloutTests(unittest.TestCase):
         bad = RolloutTransition(
             actions=(((1.01,),),),
             old_log_probs=item.old_log_probs,
-            rewards=item.rewards,
+            team_rewards=item.team_rewards,
             values=item.values,
             bootstrap_values=item.bootstrap_values,
             terminated=item.terminated,
@@ -194,21 +205,25 @@ class RecurrentRolloutTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "bounded"):
             rollout.append(bad, frame(cfg, 2))
 
-    def test_shuffle_changes_chunk_order_only(self):
+    def test_actor_and_critic_chunk_shuffles_are_reproducible(self):
         cfg = config(horizon=3, num_envs=2, num_agents=2)
         rollout = RecurrentRollout(cfg, frame(cfg, 1))
         for step in range(3):
             rollout.append(transition(cfg, step, step + 1), frame(cfg, step + 2))
         rollout.compute_gae()
-        original = rollout.sequence_chunks()
-        first = rollout.shuffled_minibatches(3, seed=7)
-        second = rollout.shuffled_minibatches(3, seed=7)
-        self.assertEqual(first, second)
+        chunks = rollout.sequence_chunks()
+        actor_first = rollout.shuffled_actor_minibatches(3, seed=7)
+        actor_second = rollout.shuffled_actor_minibatches(3, seed=7)
+        critic_first = rollout.shuffled_critic_minibatches(2, seed=9)
+        critic_second = rollout.shuffled_critic_minibatches(2, seed=9)
+        self.assertEqual(actor_first, actor_second)
+        self.assertEqual(critic_first, critic_second)
+        self.assertEqual(len(chunks.actor), len(chunks.critic) * cfg.num_agents)
         self.assertCountEqual(
-            [(item.environment_id, item.agent_id, item.start_step) for item in original],
+            [(item.environment_id, item.agent_id, item.start_step) for item in chunks.actor],
             [
                 (item.environment_id, item.agent_id, item.start_step)
-                for batch in first
+                for batch in actor_first
                 for item in batch
             ],
         )

@@ -29,7 +29,7 @@ The 55-value input follows the accepted local-observation contract, which adds e
 
 The shared actor accepts tensors shaped `[agent_sequence, time, 55]`. Each drone has its own hidden and cell state, but every sequence uses the same actor parameters. The actor API has no centralized-state argument.
 
-The training critic accepts `[environment_sequence, time, 80]` and produces one cooperative state value per environment and timestep. It has its own LSTM and parameters. The device collector will train this value against the cooperative team reward, defined as the mean of per-agent totals, and broadcast the resulting team advantage to the shared actor samples. That collector connection is still pending.
+The training critic accepts `[environment_sequence, time, 80]` and produces one cooperative state value per environment and timestep. It has its own LSTM and parameters. The device collector stores this value against the cooperative team reward, defined as the mean of per-agent totals, and broadcasts the resulting team advantage to the shared actor samples.
 
 Both networks use:
 
@@ -101,4 +101,4 @@ The earlier run `20260916T182952.983917IST-8099ba56` computed the same passing t
 
 Parameter bytes alone do not establish deployment feasibility. Working memory, exported artifact size, inference latency, quantization error, and real target-hardware behavior remain unmeasured.
 
-The next bounded component is a device-resident collector adapter. It will feed actual vector-task tensors through this policy, maintain separate actor memory per drone and critic memory per environment, store pre-reset final values correctly, and prove parity with the pure rollout reference. PPO losses, optimizers, observation-statistics checkpoints, and training recovery follow after collector parity.
+The device collector now feeds actual vector-task tensors through this policy, maintains separate actor memory per drone and critic memory per environment, stores pre-reset final values correctly, and matches the pure rollout reference; see [the collector contract](16-device-recurrent-collector.md). PPO losses, optimizers, observation-statistics checkpoints, and training recovery remain pending.

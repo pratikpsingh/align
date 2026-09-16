@@ -22,14 +22,15 @@ These notes explain the project by topic. They will grow alongside the implement
 | [Vectorized task state and resets](12-vectorized-task-state-and-resets.md) | Cloned worlds, transition ordering, per-environment memory, partial reset, and terminal masks |
 | [Recurrent rollouts and time masks](13-recurrent-rollouts-and-time-masks.md) | Ordered sequences, LSTM state, bootstrap/trace/reset masks, padding, and chunk boundaries |
 | [Shared recurrent policy and bounded actions](14-shared-recurrent-policy-and-bounded-actions.md) | Actor/critic separation, real temporal memory, transformed Gaussian actions, gradients, and evidence limits |
+| [Live recurrent collection](15-live-recurrent-collection.md) | Device rollout storage, team-value lanes, final-state bootstrap, partial resets, and reference parity |
 
-The [planning index](../plans/00-README.md) contains implementation requirements and research decisions. The runnable package and diagnostic are implemented and checked on the lab. Simulator startup/CUDA, the deterministic single-drone suite, and the four-drone construction suite have passed. Formation geometry, task rewards, bounded local observations, and recurrent rollout semantics are CPU-validated; rewards and observations were audited on the accepted physical trajectory. The cloned vector task passed its one-world and four-world GPU acceptance runs. The shared LSTM actor and centralized recurrent critic passed their vendor-PyTorch CUDA contract. Device rollout collection, PPO optimization, and training remain unimplemented.
+The [planning index](../plans/00-README.md) contains implementation requirements and research decisions. The runnable package and diagnostic are implemented and checked on the lab. Simulator startup/CUDA, the deterministic single-drone suite, and the four-drone construction suite have passed. Formation geometry, task rewards, bounded local observations, and recurrent rollout semantics are CPU-validated; rewards and observations were audited on the accepted physical trajectory. The cloned vector task passed its one-world and four-world GPU acceptance runs. The shared LSTM actor and centralized recurrent critic passed their vendor-PyTorch CUDA contract, and the live device collector passed task-connected sequence, reset, and bootstrap checks. PPO optimization and training remain unimplemented.
 
 ## How future explanations will work
 
 Each implemented topic will connect its purpose, mathematical idea, small example, code/configuration, validation, and limitations. Runnable examples will show tested commands and expected outputs. CPU checks and actual flight checks will be identified separately.
 
-Planned topics include recurrent policies, PPO optimization, communication accounting, checkpoint recovery, experiment analysis, waypoint missions, formation transitions, obstacle sensing, and group coordination. Create these when there is substantive material to explain; do not add empty placeholder lessons.
+Planned topics include PPO optimization, communication accounting, checkpoint recovery, experiment analysis, waypoint missions, formation transitions, obstacle sensing, and group coordination. Create these when there is substantive material to explain; do not add empty placeholder lessons.
 
 For each topic, try to answer: what enters the component, what does it compute, what leaves it, and how would we know it is wrong? This keeps the explanation connected to behavior rather than only naming algorithms.
 

@@ -71,6 +71,6 @@ The probe did not start Isaac Sim and used random tensors. It proves the neural 
 
 ## What comes next
 
-A collector must connect four pieces already present in the project: the vector task, local/global observations, the recurrent policy, and rollout storage. It must reset actor memory for only the drones in finished environments, reset one critic memory per finished environment, and evaluate the final pre-reset observation when a time limit needs bootstrapping.
+A collector now connects four pieces in the project: the vector task, local/global observations, the recurrent policy, and rollout storage. It resets actor memory for only the drones in finished environments, resets one critic memory per finished environment, and evaluates the final pre-reset observation when a time limit needs bootstrapping.
 
-Only after that connection has tensor parity should PPO optimization be added. This order makes a learning failure easier to locate: task transition, memory handling, stored probability, return calculation, or optimizer.
+The accepted live collector matched the CPU reference and reevaluated its stored probabilities and values. The next component is PPO optimization. This order makes a learning failure easier to locate: task transition, memory handling, stored probability, return calculation, or optimizer.

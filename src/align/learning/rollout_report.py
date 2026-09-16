@@ -37,7 +37,7 @@ def load_config(path: Path) -> RolloutConfig:
     return RolloutConfig.from_dict(value)
 
 
-def _memory(config: RolloutConfig, value: float):
+def _actor_memory(config: RolloutConfig, value: float):
     return tuple(
         tuple(
             tuple(
@@ -50,8 +50,20 @@ def _memory(config: RolloutConfig, value: float):
     )
 
 
+def _critic_memory(config: RolloutConfig, value: float):
+    return tuple(
+        tuple(
+            tuple(value for _ in range(config.recurrent_hidden_size))
+            for _ in range(config.recurrent_layers)
+        )
+        for _ in range(config.num_envs)
+    )
+
+
 def _frame(config: RolloutConfig, marker: float, *, reset: bool = False) -> RecurrentFrame:
-    memory = _memory(config, 0.0 if reset else marker)
+    memory_value = 0.0 if reset else marker
+    actor_memory = _actor_memory(config, memory_value)
+    critic_memory = _critic_memory(config, memory_value)
     return RecurrentFrame(
         actor_observations=tuple(
             tuple(
@@ -64,10 +76,10 @@ def _frame(config: RolloutConfig, marker: float, *, reset: bool = False) -> Recu
             tuple(100.0 + marker for _ in range(config.critic_state_dim))
             for _ in range(config.num_envs)
         ),
-        actor_hidden=memory,
-        actor_cell=memory,
-        critic_hidden=memory,
-        critic_cell=memory,
+        actor_hidden=actor_memory,
+        actor_cell=actor_memory,
+        critic_hidden=critic_memory,
+        critic_cell=critic_memory,
     )
 
 
@@ -79,20 +91,17 @@ def _transition(
     terminated: bool = False,
     truncated: bool = False,
 ) -> RolloutTransition:
-    agents = tuple(0.0 for _ in range(config.num_agents))
     return RolloutTransition(
         actions=tuple(
             tuple((0.0,) * config.action_dim for _ in range(config.num_agents))
             for _ in range(config.num_envs)
         ),
-        old_log_probs=tuple(agents for _ in range(config.num_envs)),
-        rewards=tuple(
-            tuple(reward for _ in range(config.num_agents)) for _ in range(config.num_envs)
+        old_log_probs=tuple(
+            tuple(0.0 for _ in range(config.num_agents)) for _ in range(config.num_envs)
         ),
-        values=tuple(agents for _ in range(config.num_envs)),
-        bootstrap_values=tuple(
-            tuple(bootstrap for _ in range(config.num_agents)) for _ in range(config.num_envs)
-        ),
+        team_rewards=tuple(reward for _ in range(config.num_envs)),
+        values=tuple(0.0 for _ in range(config.num_envs)),
+        bootstrap_values=tuple(bootstrap for _ in range(config.num_envs)),
         terminated=tuple(terminated for _ in range(config.num_envs)),
         truncated=tuple(truncated for _ in range(config.num_envs)),
     )
@@ -134,28 +143,31 @@ def build_example(production: RolloutConfig) -> dict:
     )
     advantages = rollout.compute_gae()
     chunks = rollout.sequence_chunks()
-    advantage_values = [advantages[step][0][0] for step in range(demo.horizon)]
+    advantage_values = [advantages[step][0] for step in range(demo.horizon)]
+    actor_boundaries = [(chunk.start_step, chunk.valid_length) for chunk in chunks.actor]
+    critic_boundaries = [(chunk.start_step, chunk.valid_length) for chunk in chunks.critic]
     checks = {
         "production_dimensions_match_task": True,
-        "expected_advantages": advantage_values == [3.5, 3.0, 7.0],
-        "episode_safe_chunk_boundaries": [
-            (chunk.start_step, chunk.valid_length) for chunk in chunks
-        ]
-        == [(0, 2), (2, 1)],
-        "padding_mask_present": chunks[1].valid_mask == (1.0, 0.0),
-        "post_terminal_memory_reset": chunks[1].initial_actor_hidden == ((0.0, 0.0),),
-        "actor_and_critic_inputs_separate": 110.0 not in chunks[0].actor_observations[0],
+        "expected_team_advantages": advantage_values == [3.5, 3.0, 7.0],
+        "actor_episode_safe_chunk_boundaries": actor_boundaries == [(0, 2), (2, 1)],
+        "critic_episode_safe_chunk_boundaries": critic_boundaries == [(0, 2), (2, 1)],
+        "padding_mask_present": chunks.actor[1].valid_mask == (1.0, 0.0),
+        "post_terminal_actor_memory_reset": chunks.actor[1].initial_hidden == ((0.0, 0.0),),
+        "post_terminal_critic_memory_reset": chunks.critic[1].initial_hidden == ((0.0, 0.0),),
+        "actor_and_critic_inputs_separate": (
+            110.0 not in chunks.actor[0].actor_observations[0]
+            and chunks.critic[0].critic_states[0] == (110.0, 110.0, 110.0)
+        ),
     }
     return {
         "status": "passed" if all(checks.values()) else "failed",
         "checks": checks,
         "production_config": production.to_dict(),
         "worked_example": {
-            "advantages": advantage_values,
-            "chunk_starts_and_lengths": [
-                [chunk.start_step, chunk.valid_length] for chunk in chunks
-            ],
-            "valid_masks": [list(chunk.valid_mask) for chunk in chunks],
+            "team_advantages": advantage_values,
+            "actor_chunk_starts_and_lengths": [list(value) for value in actor_boundaries],
+            "critic_chunk_starts_and_lengths": [list(value) for value in critic_boundaries],
+            "valid_masks": [list(chunk.valid_mask) for chunk in chunks.actor],
             "boundary_types": ["continuing", "terminated", "truncated"],
         },
     }

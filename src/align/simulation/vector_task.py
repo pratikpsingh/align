@@ -15,6 +15,9 @@ from importlib import metadata
 from pathlib import Path
 
 from align.artifacts import as_ist, utc_now, write_json_atomic
+from align.learning.collector_config import CollectorProbeConfig
+from align.learning.rollout import RolloutConfig
+from align.policies.config import RecurrentPolicyConfig
 from align.simulation.assets import localize_materials
 from align.simulation.multi_drone_contract import MultiDroneConfig, build_group_layout
 from align.tasks.environment import TaskEnvironmentConfig
@@ -78,15 +81,26 @@ def save_json(path, value):
 
 def load_bundle(path):
     values = json.loads(path.read_text())
-    expected = {"construction", "observation", "reward", "task"}
-    if set(values) != expected:
-        raise ValueError("resolved vector task config must contain exactly four sections")
+    required = {"construction", "observation", "reward", "task"}
+    optional = {"policy", "rollout", "collector"}
+    missing = required - set(values)
+    unknown = set(values) - required - optional
+    supplied_optional = set(values) & optional
+    if missing or unknown or (supplied_optional and supplied_optional != optional):
+        raise ValueError(
+            "resolved vector task config sections mismatch; "
+            f"missing={sorted(missing)}, unknown={sorted(unknown)}, "
+            f"collector_sections={sorted(supplied_optional)}"
+        )
     construction = MultiDroneConfig.from_dict(values["construction"])
     observation = ObservationConfig.from_dict(values["observation"])
     reward = RewardConfig.from_dict(values["reward"])
     task = TaskEnvironmentConfig.from_dict(values["task"])
     task.validate_compatibility(construction, observation, reward)
-    return construction, observation, reward, task
+    policy = RecurrentPolicyConfig.from_dict(values["policy"]) if supplied_optional else None
+    rollout = RolloutConfig.from_dict(values["rollout"]) if supplied_optional else None
+    collector = CollectorProbeConfig.from_dict(values["collector"]) if supplied_optional else None
+    return construction, observation, reward, task, policy, rollout, collector
 
 
 def build_isaac_config(construction, task, num_envs):
@@ -142,13 +156,17 @@ def phase_name(index):
 
 def run(config_path: Path, output: Path, scenario: str, num_envs: int):
     started = time.perf_counter()
-    construction, observation, reward, task = load_bundle(config_path)
+    construction, observation, reward, task, policy, rollout, collector = load_bundle(config_path)
     if num_envs not in (1, task.num_envs):
         raise ValueError("num_envs must be one or the configured probe batch")
     if scenario == "single" and num_envs != 1:
         raise ValueError("single scenario requires one environment")
-    if scenario == "batch" and num_envs != task.num_envs:
-        raise ValueError("batch scenario requires the configured environment count")
+    if scenario in ("batch", "collector") and num_envs != task.num_envs:
+        raise ValueError(f"{scenario} scenario requires the configured environment count")
+    if scenario == "collector" and any(value is None for value in (policy, rollout, collector)):
+        raise ValueError("collector scenario requires policy, rollout, and collector sections")
+    if scenario != "collector" and any(value is not None for value in (policy, rollout, collector)):
+        raise ValueError("policy collection sections are valid only for collector scenario")
 
     result = {
         "status": "running",
@@ -822,6 +840,31 @@ def run(config_path: Path, output: Path, scenario: str, num_envs: int):
         )
         event("initial_reset", reset_error=reset_error)
 
+        if scenario == "collector":
+            from align.simulation.recurrent_collector import collect_live_rollout
+
+            metrics = collect_live_rollout(
+                env=env,
+                initial=initial,
+                output=output,
+                policy_config=policy,
+                rollout_config=rollout,
+                collector_config=collector,
+                event=event,
+            )
+            save_json(output / "metrics.json", metrics)
+            result.update(
+                status=metrics["status"],
+                drone_physics_tested=True,
+                vector_task_physics_tested=True,
+                recurrent_collector_tested=True,
+                agent_steps=metrics["agent_transitions"],
+                rollout_tensor_bytes=metrics["rollout_tensor_bytes"],
+                torch_peak_allocated_bytes=torch.cuda.max_memory_allocated(),
+            )
+            event("collector_checks_finished", status=result["status"], checks=metrics["checks"])
+            return 0 if result["status"] == "passed" else 1
+
         partial_reset_isolated = scenario == "single"
         forced_termination_observed = scenario == "single"
         truncation_observed = False
@@ -1112,7 +1155,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--scenario", choices=("single", "batch"), required=True)
+    parser.add_argument("--scenario", choices=("single", "batch", "collector"), required=True)
     parser.add_argument("--num-envs", type=int, required=True)
     parser.add_argument("--allow-root", action="store_true")
     args = parser.parse_args(argv)
