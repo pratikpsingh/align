@@ -68,11 +68,13 @@ class EventFormatter(logging.Formatter):
     """JSONL events from the same records used by human-readable logging."""
 
     def format(self, record: logging.LogRecord) -> str:
+        name_parts = record.name.split(".", maxsplit=2)
+        inferred_run_id = name_parts[2] if len(name_parts) == 3 else record.name
         event = {
             "timestamp_utc": datetime.fromtimestamp(record.created, timezone.utc).isoformat(),
             "timestamp_ist": datetime.fromtimestamp(record.created, IST).isoformat(),
             "level": record.levelname,
-            "run_id": record.name.removeprefix("align.doctor."),
+            "run_id": getattr(record, "run_id", inferred_run_id),
             "event": getattr(record, "event", "message"),
             "message": record.getMessage(),
         }
@@ -85,9 +87,15 @@ class EventFormatter(logging.Formatter):
 
 
 @contextmanager
-def diagnostic_logger(run_dir: Path, level: str) -> Iterator[logging.Logger]:
-    """Own and close handlers without changing the application's root logger."""
-    logger = logging.getLogger(f"align.doctor.{run_dir.name}")
+def artifact_logger(
+    run_dir: Path,
+    level: str,
+    *,
+    log_filename: str,
+    namespace: str,
+) -> Iterator[logging.Logger]:
+    """Own run-specific console, readable-file, and JSONL handlers."""
+    logger = logging.getLogger(f"{namespace}.{run_dir.name}")
     logger.setLevel(logging.DEBUG)
     logger.propagate = False
     readable = ISTFormatter("%(asctime)s IST %(levelname)s %(message)s")
@@ -96,7 +104,7 @@ def diagnostic_logger(run_dir: Path, level: str) -> Iterator[logging.Logger]:
         console.setLevel(level)
         console.setFormatter(readable)
         logger.addHandler(console)
-        for filename, formatter in (("doctor.log", readable), ("events.jsonl", EventFormatter())):
+        for filename, formatter in ((log_filename, readable), ("events.jsonl", EventFormatter())):
             handler = logging.FileHandler(run_dir / filename, mode="x", encoding="utf-8")
             handler.setFormatter(formatter)
             logger.addHandler(handler)
@@ -105,3 +113,15 @@ def diagnostic_logger(run_dir: Path, level: str) -> Iterator[logging.Logger]:
         for handler in logger.handlers[:]:
             logger.removeHandler(handler)
             handler.close()
+
+
+@contextmanager
+def diagnostic_logger(run_dir: Path, level: str) -> Iterator[logging.Logger]:
+    """Diagnostic-specific wrapper retaining the established artifact names."""
+    with artifact_logger(
+        run_dir,
+        level,
+        log_filename="doctor.log",
+        namespace="align.doctor",
+    ) as logger:
+        yield logger

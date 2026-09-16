@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "num_agents": 8,
+  "minimum_spacing_m": 1.0,
+  "center_m": [0.0, 0.0, 2.0],
+  "yaw_rad": 0.0,
+  "kinds": ["cube", "sphere", "pyramid", "plane"]
+}

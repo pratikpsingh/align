@@ -15,7 +15,7 @@ Dependencies: access to the current scaffold and the lab machine's hardware/runt
 - [x] Validate uv integration in a derived image while preserving vendor PyTorch. Audit shared Python >=3.10 compatibility and maintain separate host/additional-runtime locks.
 - [x] Establish the src package, validated diagnostic configuration, CLI, offline logging, and machine-readable inventory reports. Training configuration and simulator compatibility checks remain future work.
 - [x] Run the isolated headless Isaac Sim startup/CUDA check on the lab; fast-mode run 20260916T010519.212064IST-5253d3c9 passed.
-- [ ] Integrate pinned OmniDrones dependencies and run an actual drone observation/action/reset check. Record exact commands, trajectories, and outcomes.
+- [x] Integrate pinned OmniDrones dependencies and run an actual drone observation/action/reset check. Record exact commands, trajectories, and outcomes; accepted run `20260916T101342.169928IST-39fd6f42`.
 
 Acceptance: reproducible setup from a clean checkout; CPU imports do not initialize Isaac Sim; GPU preflight gives actionable errors; versions and hardware are recorded. Public installation instructions and a learning document explaining the runtime are required.
 
@@ -23,10 +23,10 @@ Acceptance: reproducible setup from a clean checkout; CPU imports do not initial
 
 Dependencies: configuration foundation; GPU runtime for integration checks.
 
-- [ ] Specify task observation/action frames, units, tensor shapes, masks, control frequency, controller state, and limits. The single-drone instrumentation/controller subset is now documented and calibrated; task masks remain future work.
-- [ ] Implement tested cube/sphere/pyramid/plane templates, target assignment, formation metrics, and group-aware data structures.
+- [ ] Specify task observation/action frames, units, tensor shapes, masks, control frequency, controller state, and limits. The single-drone instrumentation/controller subset is documented and accepted; task masks remain future work.
+- [ ] Implement tested cube/sphere/pyramid/plane templates, target assignment, formation metrics, and group-aware data structures. Templates, assignment, and metrics are complete; group-aware task data remains.
 - [ ] Implement reset, ground takeoff, goal tracking, dwell-based success, time limits, and explicit termination reasons.
-- [ ] Integrate a calibrated low-level controller and validate commanded motion before policy learning.
+- [x] Integrate a calibrated low-level controller and validate commanded motion before policy learning.
 - [ ] Implement reward components as separately logged quantities, including an active formation term and inter-UAV safety.
 
 Acceptance: simple controlled motion behaves in the correct axis/units; reset and target placement are reproducible; analytical geometry examples match metrics; physical contacts and distance violations are distinct. Include diagrams or small numerical examples in the learning explanation.
@@ -107,4 +107,4 @@ Time estimates and final experiment budgets will follow runtime smoke tests and 
 
 ## Single-drone evidence update, 2026-09-16
 
-The integration and deterministic check are implemented. Calibration completed ten episodes / 6,000 real physics samples, with correct axes, hover recovery, and repeated-reset agreement. The run still failed its overall artifact contract during PDF export and host JSON ingestion. Fixes and frozen tolerances are prepared; final acceptance awaits the user-run Docker command because this agent session lacks Docker access. See [exact attempts and current status](../docs/08-single-drone-control.md). No formation-learning work was started.
+Final run `20260916T101342.169928IST-39fd6f42` passed all 62 frozen checks over ten episodes / 6,000 real physics samples. It confirmed correct axes, hover recovery, repeated-reset agreement, host metric recomputation, both trajectory plots, and container exit 0. See [the exact attempts and accepted evidence](../docs/08-single-drone-control.md). Formation geometry utilities are now implemented on the CPU; multi-drone simulator integration and formation learning have not started.

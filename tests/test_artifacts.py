@@ -11,6 +11,7 @@ from unittest.mock import patch
 from align.artifacts import (
     EventFormatter,
     ISTFormatter,
+    artifact_logger,
     as_ist,
     create_run_directory,
     diagnostic_logger,
@@ -60,6 +61,21 @@ class ArtifactTests(unittest.TestCase):
             self.assertEqual(events[0]["run_id"], run_dir.name)
             self.assertEqual(events[0]["event"], "check_completed")
             self.assertIn("Probe complete", (run_dir / "doctor.log").read_text())
+
+    def test_generic_artifact_logger_uses_run_identity_and_requested_filename(self):
+        with TemporaryDirectory() as directory:
+            run_dir = create_run_directory(Path(directory))
+            with artifact_logger(
+                run_dir,
+                "ERROR",
+                log_filename="formation.log",
+                namespace="align.formations",
+            ) as logger:
+                logger.info("Geometry complete", extra={"event": "report_completed"})
+            event = json.loads((run_dir / "events.jsonl").read_text())
+            self.assertEqual(event["run_id"], run_dir.name)
+            self.assertEqual(event["event"], "report_completed")
+            self.assertIn("Geometry complete", (run_dir / "formation.log").read_text())
 
     def test_ist_rollover_preserves_instant(self):
         utc = "2026-09-15T19:20:28.862792+00:00"

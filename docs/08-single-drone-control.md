@@ -88,7 +88,9 @@ Measured calibration outcomes: maximum hover tail error 0.000143 m, axis displac
 
 A useful low-speed approximation explains the measured speed deficit: with velocity gain 2.2 and linear damping 0.2, balancing controller acceleration against damping predicts `v ≈ 2.2/(2.2+0.2) × 0.25 = 0.22917 m/s`. This is an interpretation of the measured baseline, not an independently identified aerodynamic model. No integral or damping feedforward correction was added.
 
-The corrected runtime adds locked fontTools 4.53.1 for PDF export and makes exported probe JSON host-readable. The CPU suite now has 46 passing checks on Python 3.10 and 3.12. The final acceptance run with frozen tolerances is pending.
+The corrected runtime adds locked fontTools 4.53.1 for PDF export and makes exported probe JSON host-readable.
+
+Final acceptance run `20260916T101342.169928IST-39fd6f42` passed all 62 frozen decisions over 6,000 samples. It began at `2026-09-16T10:13:42.172066+05:30`, completed in 96.132 seconds, and exited the container with code 0. The flushed probe records `drone_physics_tested: true`; the host independently recomputed the metrics from `trajectory.csv` and obtained the same pass. Both `trajectory.png` and `trajectory.pdf` are present. The measured values remain consistent with calibration: maximum hover error 0.000143 m, commanded-axis displacements 0.59129–0.59357 m, command-tail velocity about 0.229 m/s, maximum cross-axis displacement 0.000854 m, and repeat discrepancy below 0.0000177.
 
 ## Recompute after the simulation has ended
 
@@ -99,14 +101,6 @@ uv run --locked --extra reporting python scripts/report_single_drone.py runs/sin
 
 Each command creates a separate report directory under `runs/single-drone-reports/`; original flight artifacts are preserved. Plotting is optional and uses the host reporting lock. The host launcher also compares the saved container metrics with a fresh evaluation of the raw CSV.
 
-## Current terminal handoff
+## Current operational baseline
 
-The image context `runs/runtime-build/20260916T015817.377540IST-85fe3643/` contains the JSON-permission and fontTools fixes. The agent cannot access Docker directly. From the lab terminal in `align/`:
-
-```sh
-sudo -v
-uv run --locked python scripts/build_omnidrones_runtime.py --prepared-run runs/runtime-build/20260916T015817.377540IST-85fe3643
-uv run --locked python scripts/run_single_drone.py --accept-eula --gpu 0
-```
-
-Run the flight command only after the build reports `built`. The earlier prepared context ending `5c10a7b0` lacks the PDF dependency and is superseded. Final acceptance remains pending until the new run reports passed, its raw metrics agree with host recomputation, and both plots are saved. Fresh machine inventory is `runs/diagnostics/20260916T101219.514424IST-d2b1397b/`.
+The accepted derived image and exact build inputs are recorded in the final run. Re-run the same command under **Execute and inspect** after checking GPU allocation. Fresh machine inventory for the acceptance session is `runs/diagnostics/20260916T101219.514424IST-d2b1397b/`. Keep the earlier failures and calibration run: they explain the offline-asset, PDF-dependency, and permission corrections. Because `runs/` is ignored, copy the accepted run directory to the project's external backup along with the tracked source revision.

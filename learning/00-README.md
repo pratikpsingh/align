@@ -15,14 +15,15 @@ These notes explain the project by topic. They will grow alongside the implement
 | [Training, results, and recovery](05-training-results-and-recovery.md) | What training saves, how to read results, what a checkpoint restores, and how videos can be made later |
 | [From startup to drone control](06-from-startup-to-drone-control.md) | What passed, why controller/reset checks come next, and how to continue on the lab |
 | [Runtime and controller contract](07-runtime-and-controller-contract.md) | Velocity commands, rotor forces, reset memory, pinned environments and flight evidence |
+| [Formation geometry and assignment](08-formation-geometry-and-assignment.md) | Shape slots, minimum spacing, one-to-one assignment, and comparable error metrics |
 
-The [planning index](../plans/00-README.md) contains implementation requirements and research decisions. The runnable package and diagnostic are implemented and checked on the laptop. Basic simulator startup/CUDA execution has passed on the lab; the single-drone integration is implemented and undergoing lab calibration; training remains unimplemented; each explanation distinguishes current code from future work.
+The [planning index](../plans/00-README.md) contains implementation requirements and research decisions. The runnable package and diagnostic are implemented and checked on the lab. Simulator startup/CUDA and the deterministic single-drone acceptance suite have passed. Formation geometry is CPU-validated; multi-drone task integration and training remain unimplemented. Each explanation distinguishes current code from future work.
 
 ## How future explanations will work
 
 Each implemented topic will connect its purpose, mathematical idea, small example, code/configuration, validation, and limitations. Runnable examples will show tested commands and expected outputs. CPU checks and actual flight checks will be identified separately.
 
-Planned topics include runtime setup, formation geometry, observations and coordinate frames, low-level control, recurrent policies, PPO/GAE, reward design, neighborhood graphs, checkpoint recovery, experiment analysis, waypoint missions, formation transitions, obstacle sensing, and group coordination. Create these when there is substantive material to explain; do not add empty placeholder lessons.
+Planned topics include observations and coordinate frames, recurrent policies, PPO/GAE, reward design, neighborhood graphs, checkpoint recovery, experiment analysis, waypoint missions, formation transitions, obstacle sensing, and group coordination. Create these when there is substantive material to explain; do not add empty placeholder lessons.
 
 For each topic, try to answer: what enters the component, what does it compute, what leaves it, and how would we know it is wrong? This keeps the explanation connected to behavior rather than only naming algorithms.
 
