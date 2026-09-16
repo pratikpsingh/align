@@ -2,7 +2,7 @@
 
 ## Scope and current evidence
 
-This runtime connects ALiGn to one Hummingbird drone through OmniDrones. It contains a deterministic controller check, not an RL task or learner. The [single-drone guide](08-single-drone-control.md) defines its measurements. Lab calibration and acceptance results are recorded there as they arrive.
+This runtime connects ALiGn to Hummingbird drones through OmniDrones. It contains deterministic one- and four-drone controller checks, not an RL learner. The [single-drone guide](08-single-drone-control.md) records its accepted baseline; the [multi-drone guide](10-multi-drone-construction.md) defines the construction probe.
 
 On 2026-09-16, the derived image built successfully in `runs/runtime-build/20260916T014225.397441IST-4f57661c/`. The build checked the additional packages' dependency closure and verified the vendor versions. This establishes installation, not flight correctness. The existing base-image startup evidence remains `20260916T010519.212064IST-5253d3c9`; its probe hash still matches.
 
@@ -54,6 +54,8 @@ uv run --locked python scripts/inspect_isaac_runtime.py
 uv run --locked python scripts/build_omnidrones_runtime.py
 sudo -v
 uv run --locked python scripts/run_single_drone.py --accept-eula --gpu 0
+# After rebuilding with the multi-drone source:
+uv run --locked python scripts/run_multi_drone.py --accept-eula --gpu 0
 ```
 
 Use `--docker direct` on each helper only when this session has Docker socket access. `sudo -v` authenticates in your terminal; the scripts use noninteractive `sudo -n` so a captured password prompt cannot hang a job. Do not run uv as root. The `--accept-eula` flag has the same meaning as in the [base startup guide](04-isaac-sim-smoke.md).
@@ -75,6 +77,6 @@ Prepared input hashes are checked before building. Rebuild after changing simula
 
 Inventory: `runs/runtime-inventory/<id>/` contains Docker server/client, image metadata, vendor distributions, exact commands, and logs. Recorded versions: Docker Engine/client 29.8.1, containerd 2.3.5, runc 1.5.1, NVIDIA Container Toolkit/libnvidia-container 1.20.0. Host GPU 0 was idle with 16 MiB used before integration; availability is checked again for each launch and is not a permanent reservation.
 
-Builds: `runs/runtime-build/<id>/` contains the context, manifest, build log, source identity, exact build command, and resulting image metadata. Flights: `runs/single-drone/<id>/` contains the flight evidence described in the next guide. Run IDs and ALiGn displays use IST; UTC fields remain available. Native Kit logs retain their native timestamps.
+Builds: `runs/runtime-build/<id>/` contains the context, manifest, build log, source identity, exact build command, and resulting image metadata. One-drone flights use `runs/single-drone/<id>/`; group construction uses `runs/multi-drone/<id>/`. Run IDs and ALiGn displays use IST; UTC fields remain available. Native Kit logs retain their native timestamps.
 
 `runs/` and `.runtime/` are ignored. Back up required run folders separately from Git, including unsuccessful attempts, the successful build context, source/asset hashes, and trajectories. Do not delete the earlier failed full-cleanup startup run. A copied virtual environment is not a reproducible installation.

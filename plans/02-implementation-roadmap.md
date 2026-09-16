@@ -24,8 +24,8 @@ Acceptance: reproducible setup from a clean checkout; CPU imports do not initial
 Dependencies: configuration foundation; GPU runtime for integration checks.
 
 - [ ] Specify task observation/action frames, units, tensor shapes, masks, control frequency, controller state, and limits. The single-drone instrumentation/controller subset is documented and accepted; task masks remain future work.
-- [ ] Implement tested cube/sphere/pyramid/plane templates, target assignment, formation metrics, and group-aware data structures. Templates, assignment, and metrics are complete; group-aware task data remains.
-- [ ] Implement reset, ground takeoff, goal tracking, dwell-based success, time limits, and explicit termination reasons.
+- [x] Implement tested cube/sphere/pyramid/plane templates, target assignment, formation metrics, and group-aware data structures. The first group contract uses stable identities and fixed assignment.
+- [ ] Implement reset, ground takeoff, goal tracking, dwell-based success, time limits, and explicit termination reasons. The four-drone plane probe implements these; calibration run `20260916T115816.925151IST-deb9d6bb` supplied frozen schema-2 tolerances, and a clean acceptance rerun remains.
 - [x] Integrate a calibrated low-level controller and validate commanded motion before policy learning.
 - [ ] Implement reward components as separately logged quantities, including an active formation term and inter-UAV safety.
 
@@ -107,4 +107,4 @@ Time estimates and final experiment budgets will follow runtime smoke tests and 
 
 ## Single-drone evidence update, 2026-09-16
 
-Final run `20260916T101342.169928IST-39fd6f42` passed all 62 frozen checks over ten episodes / 6,000 real physics samples. It confirmed correct axes, hover recovery, repeated-reset agreement, host metric recomputation, both trajectory plots, and container exit 0. See [the exact attempts and accepted evidence](../docs/08-single-drone-control.md). Formation geometry utilities are now implemented on the CPU; multi-drone simulator integration and formation learning have not started.
+Final run `20260916T101342.169928IST-39fd6f42` passed all 62 frozen checks over ten episodes / 6,000 real physics samples. It confirmed correct axes, hover recovery, repeated-reset agreement, host metric recomputation, both trajectory plots, and container exit 0. See [the exact attempts and accepted evidence](../docs/08-single-drone-control.md). Formation geometry utilities and the four-drone ground-to-plane integration probe are implemented. The probe's calibration data supplied frozen schema-2 tolerances; a clean simulator acceptance run remains, and formation learning has not started.
