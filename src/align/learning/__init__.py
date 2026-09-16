@@ -11,6 +11,7 @@ from align.learning.rollout import (
     RolloutTransition,
     SequenceChunks,
 )
+from align.learning.training_config import TaskTrainingConfig
 
 __all__ = [
     "RecurrentPPOConfig",
@@ -22,4 +23,5 @@ __all__ = [
     "RolloutConfig",
     "RolloutTransition",
     "SequenceChunks",
+    "TaskTrainingConfig",
 ]

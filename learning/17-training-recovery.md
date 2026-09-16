@@ -105,9 +105,9 @@ behavior.
 
 ## What comes next
 
-The collector, recurrent PPO updater, and recovery store can now be joined in a
-short simulator learning loop. That loop must collect real task sequences,
-update once per completed batch, save at update boundaries, stop on persistence
-failure, and resume in a new attempt with environments and LSTM memory reset.
-The first goal is reliable operation and interpretable raw metrics, not a claim
-that the policy has learned the paper's reported performance.
+The bounded [task-connected training loop](18-task-connected-training-loop.md)
+now joins the collector, recurrent PPO updater, and recovery store. It collects
+real task sequences, commits completed updates, and resumes in a new simulator
+process with environments and LSTM memory reset. Its raw diagnostics establish
+operation and expose critic instability; they do not show that the policy has
+learned the paper's reported performance.

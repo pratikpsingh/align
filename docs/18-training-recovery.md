@@ -123,8 +123,9 @@ learner-state recovery and storage failure behavior in the selected CUDA
 runtime. It does not prove power-loss durability for every filesystem, exact
 Isaac Sim continuation, or learned flight performance.
 
-The next bounded task is a short task-connected training command that alternates
-the accepted live collector and recurrent PPO updater, checkpoints only at
-completed update boundaries, starts a new attempt on resume, labels abandoned
-episodes, and writes raw per-update/task metrics. Only after that interruption
-and resume exercise passes should a longer formation-learning experiment begin.
+The bounded [task-connected training command](19-task-connected-training.md) now
+alternates live collection and recurrent PPO in two simulator processes,
+checkpoints at completed update boundaries, starts a new attempt on resume,
+labels abandoned episodes, and writes raw per-update/task metrics. Its finite
+but unstable critic diagnostics call for stability calibration and independent
+evaluation before longer formation learning.

@@ -125,5 +125,5 @@ norms, and explained variance.
 
 The accepted reset-mode recovery mechanism now saves both networks, both
 optimizers, declared normalization state, RNG states, update and environment
-counters, immutable configuration, and checkpoint lineage. The next task joins
-collection, updates, and recovery in a short simulator training loop.
+counters, immutable configuration, and checkpoint lineage. The bounded [task-connected training loop](18-task-connected-training-loop.md) now
+joins collection, updates, and recovery across two simulator processes.

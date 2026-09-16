@@ -16,7 +16,10 @@ from pathlib import Path
 
 from align.artifacts import as_ist, utc_now, write_json_atomic
 from align.learning.collector_config import CollectorProbeConfig
+from align.learning.ppo_config import RecurrentPPOConfig
+from align.learning.recovery_config import RecoveryConfig
 from align.learning.rollout import RolloutConfig
+from align.learning.training_config import TaskTrainingConfig
 from align.policies.config import RecurrentPolicyConfig
 from align.simulation.assets import localize_materials
 from align.simulation.multi_drone_contract import MultiDroneConfig, build_group_layout
@@ -82,15 +85,18 @@ def save_json(path, value):
 def load_bundle(path):
     values = json.loads(path.read_text())
     required = {"construction", "observation", "reward", "task"}
-    optional = {"policy", "rollout", "collector"}
+    collector_sections = {"policy", "rollout", "collector"}
+    training_sections = {"policy", "rollout", "ppo", "recovery", "training"}
+    known = required | collector_sections | training_sections
     missing = required - set(values)
-    unknown = set(values) - required - optional
-    supplied_optional = set(values) & optional
-    if missing or unknown or (supplied_optional and supplied_optional != optional):
+    unknown = set(values) - known
+    supplied_optional = set(values) - required
+    valid_optional = supplied_optional in (set(), collector_sections, training_sections)
+    if missing or unknown or not valid_optional:
         raise ValueError(
             "resolved vector task config sections mismatch; "
             f"missing={sorted(missing)}, unknown={sorted(unknown)}, "
-            f"collector_sections={sorted(supplied_optional)}"
+            f"optional_sections={sorted(supplied_optional)}"
         )
     construction = MultiDroneConfig.from_dict(values["construction"])
     observation = ObservationConfig.from_dict(values["observation"])
@@ -99,8 +105,39 @@ def load_bundle(path):
     task.validate_compatibility(construction, observation, reward)
     policy = RecurrentPolicyConfig.from_dict(values["policy"]) if supplied_optional else None
     rollout = RolloutConfig.from_dict(values["rollout"]) if supplied_optional else None
-    collector = CollectorProbeConfig.from_dict(values["collector"]) if supplied_optional else None
-    return construction, observation, reward, task, policy, rollout, collector
+    collector = (
+        CollectorProbeConfig.from_dict(values["collector"])
+        if supplied_optional == collector_sections
+        else None
+    )
+    ppo = (
+        RecurrentPPOConfig.from_dict(values["ppo"])
+        if supplied_optional == training_sections
+        else None
+    )
+    recovery = (
+        RecoveryConfig.from_dict(values["recovery"])
+        if supplied_optional == training_sections
+        else None
+    )
+    training = (
+        TaskTrainingConfig.from_dict(values["training"])
+        if supplied_optional == training_sections
+        else None
+    )
+    return (
+        construction,
+        observation,
+        reward,
+        task,
+        policy,
+        rollout,
+        collector,
+        ppo,
+        recovery,
+        training,
+        values,
+    )
 
 
 def build_isaac_config(construction, task, num_envs):
@@ -154,19 +191,60 @@ def phase_name(index):
     return ("ground", "takeoff", "formation")[index]
 
 
-def run(config_path: Path, output: Path, scenario: str, num_envs: int):
+def run(
+    config_path: Path,
+    output: Path,
+    scenario: str,
+    num_envs: int,
+    *,
+    logical_run_id: str | None = None,
+    attempt_id: str | None = None,
+    checkpoint_directory: Path | None = None,
+    resume: bool = False,
+    source_identity: str | None = None,
+    runtime_identity: str | None = None,
+):
     started = time.perf_counter()
-    construction, observation, reward, task, policy, rollout, collector = load_bundle(config_path)
+    (
+        construction,
+        observation,
+        reward,
+        task,
+        policy,
+        rollout,
+        collector,
+        ppo,
+        recovery,
+        training,
+        resolved_config,
+    ) = load_bundle(config_path)
     if num_envs not in (1, task.num_envs):
         raise ValueError("num_envs must be one or the configured probe batch")
     if scenario == "single" and num_envs != 1:
         raise ValueError("single scenario requires one environment")
-    if scenario in ("batch", "collector") and num_envs != task.num_envs:
+    if scenario in ("batch", "collector", "training") and num_envs != task.num_envs:
         raise ValueError(f"{scenario} scenario requires the configured environment count")
     if scenario == "collector" and any(value is None for value in (policy, rollout, collector)):
         raise ValueError("collector scenario requires policy, rollout, and collector sections")
-    if scenario != "collector" and any(value is not None for value in (policy, rollout, collector)):
-        raise ValueError("policy collection sections are valid only for collector scenario")
+    if scenario == "training" and any(
+        value is None for value in (policy, rollout, ppo, recovery, training)
+    ):
+        raise ValueError("training scenario requires policy, rollout, PPO, recovery, and training")
+    if scenario == "training" and any(
+        value is None
+        for value in (
+            logical_run_id,
+            attempt_id,
+            checkpoint_directory,
+            source_identity,
+            runtime_identity,
+        )
+    ):
+        raise ValueError("training scenario requires run, attempt, checkpoint, and identity values")
+    if scenario not in ("collector", "training") and any(
+        value is not None for value in (policy, rollout, collector, ppo, recovery, training)
+    ):
+        raise ValueError("learner sections are valid only for collector or training scenarios")
 
     result = {
         "status": "running",
@@ -840,6 +918,41 @@ def run(config_path: Path, output: Path, scenario: str, num_envs: int):
         )
         event("initial_reset", reset_error=reset_error)
 
+        if scenario == "training":
+            from align.simulation.task_training import run_training_attempt
+
+            metrics = run_training_attempt(
+                env=env,
+                initial=initial,
+                output=output,
+                checkpoint_directory=checkpoint_directory,
+                logical_run_id=logical_run_id,
+                attempt_id=attempt_id,
+                resume=resume,
+                resolved_config=resolved_config,
+                config_sha256=hashlib.sha256(config_path.read_bytes()).hexdigest(),
+                source_identity=source_identity,
+                runtime_identity=runtime_identity,
+                policy_config=policy,
+                rollout_config=rollout,
+                ppo_config=ppo,
+                recovery_config=recovery,
+                training_config=training,
+                event=event,
+            )
+            save_json(output / "metrics.json", metrics)
+            result.update(
+                status=metrics["status"],
+                drone_physics_tested=True,
+                vector_task_physics_tested=True,
+                task_training_tested=True,
+                optimizer_updates=1,
+                agent_steps=rollout.horizon * rollout.num_envs * rollout.num_agents,
+                torch_peak_allocated_bytes=torch.cuda.max_memory_allocated(),
+            )
+            event("training_attempt_finished", status=result["status"], checks=metrics["checks"])
+            return 0 if result["status"] == "passed" else 1
+
         if scenario == "collector":
             from align.simulation.recurrent_collector import collect_live_rollout
 
@@ -1155,11 +1268,30 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--scenario", choices=("single", "batch", "collector"), required=True)
+    parser.add_argument(
+        "--scenario", choices=("single", "batch", "collector", "training"), required=True
+    )
     parser.add_argument("--num-envs", type=int, required=True)
+    parser.add_argument("--logical-run-id")
+    parser.add_argument("--attempt-id")
+    parser.add_argument("--checkpoint-directory", type=Path)
+    parser.add_argument("--resume", action="store_true")
+    parser.add_argument("--source-identity")
+    parser.add_argument("--runtime-identity")
     parser.add_argument("--allow-root", action="store_true")
     args = parser.parse_args(argv)
-    return run(args.config, args.output, args.scenario, args.num_envs)
+    return run(
+        args.config,
+        args.output,
+        args.scenario,
+        args.num_envs,
+        logical_run_id=args.logical_run_id,
+        attempt_id=args.attempt_id,
+        checkpoint_directory=args.checkpoint_directory,
+        resume=args.resume,
+        source_identity=args.source_identity,
+        runtime_identity=args.runtime_identity,
+    )
 
 
 if __name__ == "__main__":

@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "attempts": 2,
+  "updates_per_attempt": 1,
+  "policy_seed": 41,
+  "stochastic_actions": true,
+  "normalization_enabled": false,
+  "require_parameter_change": true
+}

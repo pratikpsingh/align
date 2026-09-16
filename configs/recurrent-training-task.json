@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "num_envs": 4,
+  "max_episode_steps": 80,
+  "terminal_separation_m": 0.25,
+  "crash_height_m": -0.05,
+  "safety_xy_limit_m": 5.0,
+  "safety_z_limit_m": 3.0,
+  "airborne_height_m": 0.25,
+  "contact_force_threshold_n": 0.01,
+  "formation_rmse_tolerance_m": 0.1,
+  "pairwise_rmse_tolerance_m": 0.08,
+  "speed_tolerance_m_s": 0.08,
+  "success_dwell_steps": 200
+}

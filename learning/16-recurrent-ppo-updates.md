@@ -105,6 +105,7 @@ critic, both optimizer states, normalization state, random-number states,
 counters, immutable configuration, and checkpoint lineage. Its atomic write and
 fallback checks passed in the vendor CUDA runtime.
 
-A short simulator training command can now alternate live collection and
-recurrent PPO updates, save recoverable checkpoints, and evaluate whether task
-metrics change without claiming final research results.
+The bounded [task-connected training loop](18-task-connected-training-loop.md) now
+alternates live collection and recurrent PPO updates across two simulator
+processes and saves recoverable checkpoints. Its critic diagnostics warn that
+stable learning and meaningful reward trends remain unproven.

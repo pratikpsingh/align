@@ -43,11 +43,11 @@ Dependencies: stable task contracts and reward/termination semantics.
 - [ ] Implement rollout collection, GAE, PPO updates, actual temporal sequence unrolling, and per-agent recurrent resets.
   - [x] Define and CPU-validate time-major rollout storage, separate bootstrap/trace/reset masks, GAE, initial LSTM states, padding masks, and episode-safe chunks.
   - [x] Collect a device-resident live rollout with per-drone actor memory, per-environment critic memory, partial resets, episode-safe chunks, and CPU-reference parity. Accepted run `20260916T190924.021233IST-667b7fa8` passed all device and host checks.
-  - [x] Implement and validate masked recurrent PPO losses and optimizer updates. CUDA run `20260916T210604.064887IST-87a056c2` passed all 14 finite-update, clipping, team-advantage, and padding-invariance checks on a synthetic sequence fixture.
+  - [x] Implement and validate masked recurrent PPO losses and optimizer updates. CUDA run `20260916T210604.064887IST-87a056c2` passed all 14 finite-update, clipping, team-advantage, and padding-invariance checks on a synthetic sequence fixture. Bounded live task run `20260916T220631.683824IST-5f89b3be` then completed two updates across separate simulator processes.
 - [x] Preserve sequence ordering, chunk boundaries, initial recurrent states, and valid-sample masks during minibatching. CPU chunks are episode-safe; the CUDA actor/critic exactly matched full versus two-chunk evaluation.
 - [x] Handle true termination and time-limit truncation correctly, using the final observation where bootstrap is appropriate. The accepted collector observed both boundary types and verified zero terminal versus finite truncation bootstraps.
 - [ ] Demonstrate finite gradients/updates, episode isolation, and dependence on prior observations in a meaningful memory check.
-  - [x] The CUDA tensor probes demonstrated finite nonzero gradients and updates, exact reset isolation, measurable dependence on earlier observations, and update invariance to corrupted padding. A task-connected learning check remains pending.
+  - [x] The CUDA tensor probes demonstrated finite nonzero gradients and updates, exact reset isolation, measurable dependence on earlier observations, and update invariance to corrupted padding. The bounded task-connected run demonstrated finite live updates and changed actor/critic parameters; multi-update stability and evaluation remain pending.
 
 Acceptance: recurrence is trained across time rather than as independent length-one samples; the actor receives no undeclared global data; reset memory cannot leak between episodes. A small simulator learning run produces interpretable diagnostics, without claiming final performance.
 
@@ -61,7 +61,7 @@ Dependencies: learner state definitions. Develop this alongside the learner, bef
 - [ ] Test interruption, partial writes, corrupt latest checkpoints, repeated restarts, and counter/plot consistency.
   - [x] Host tests cover abrupt subprocess exit, partial and failed writes, malformed pre-publication payloads, corrupt newest fallback, and configuration mismatch. The CUDA probe matched the exact next update, advanced counters once, and loaded the fallback in a fresh process. Task-connected attempt metrics and plot supersession remain pending.
 - [ ] Produce a report from an interrupted-and-resumed example and explain any lost rollout progress.
-  - [x] The synthetic recovery report explicitly discards partial rollout and recurrent state. An interrupted live simulator-training example remains pending.
+  - [x] The synthetic recovery report explicitly discards partial rollout and recurrent state. A bounded live two-process run then restored update 1 in a new Isaac Sim process, labeled four unfinished environment episodes as abandoned, restarted recurrent memory, and committed update 2. A fault-injected interruption during live collection remains pending.
 
 Acceptance: an interrupted run resumes from its latest valid committed state; no silent resetting of optimizer or normalization; reports identify attempts and abandoned work. See [recovery](07-training-recovery.md) and [artifacts](08-experiments-and-artifacts.md).
 

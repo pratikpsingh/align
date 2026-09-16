@@ -47,7 +47,7 @@ COLLECTOR_COLUMNS = (
 )
 
 
-def _zero_done_actor_memory(
+def zero_done_actor_memory(
     state: RecurrentState,
     done: torch.Tensor,
     rollout: RolloutConfig,
@@ -75,7 +75,7 @@ def _zero_done_actor_memory(
     )
 
 
-def _zero_done_critic_memory(state: RecurrentState, done: torch.Tensor) -> RecurrentState:
+def zero_done_critic_memory(state: RecurrentState, done: torch.Tensor) -> RecurrentState:
     hidden = state.hidden.clone()
     cell = state.cell.clone()
     hidden[:, done] = 0
@@ -298,8 +298,8 @@ def collect_live_rollout(
                     )
                 truncation_observed |= bool(truncated.any().item())
 
-                next_actor_memory = _zero_done_actor_memory(actor_result.state, done, cfg)
-                next_critic_memory = _zero_done_critic_memory(critic_result.state, done)
+                next_actor_memory = zero_done_actor_memory(actor_result.state, done, cfg)
+                next_critic_memory = zero_done_critic_memory(critic_result.state, done)
                 if bool(done.any()):
                     actor_before_reset = actor_result.state.hidden.view(
                         cfg.recurrent_layers,

@@ -4,7 +4,7 @@ Read this index first, then follow the two-digit filename prefixes in ascending 
 
 Prepared: 2026-09-15
 
-Status: the uv-managed package, machine diagnostic, local logging, and report artifacts are implemented and checked on CPU. Public [installation](../docs/01-installation.md), [diagnostic](../docs/02-diagnostics.md), and [development](../docs/05-development.md) instructions now exist. Python 3.12 remains the development pin; the isolated Isaac Sim startup/CUDA probe, deterministic controller checks, one/four-world OmniDrones task acceptance, recurrent learner components, and reset-mode checkpoint recovery have passed on the lab. Task-connected simulator training remains unimplemented.
+Status: the uv-managed package, machine diagnostic, local logging, and report artifacts are implemented and checked on CPU. Public [installation](../docs/01-installation.md), [diagnostic](../docs/02-diagnostics.md), and [development](../docs/05-development.md) instructions now exist. Python 3.12 remains the development pin; the isolated Isaac Sim startup/CUDA probe, deterministic controller checks, one/four-world OmniDrones task acceptance, recurrent learner components, and reset-mode checkpoint recovery have passed on the lab. A bounded two-process task-connected simulator training and resume check has passed; sustained stable learning and independent evaluation remain pending.
 
 ## Direction
 

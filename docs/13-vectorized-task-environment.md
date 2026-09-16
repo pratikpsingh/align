@@ -4,7 +4,7 @@
 
 ALiGn now has a CPU reference episode contract and a simulator-native vector task for the pinned OmniDrones runtime. The task combines the validated velocity controller, bounded local actor observations, separate centralized critic state, component reward, phase schedule, safety outcomes, and reset memory behind step/reset operations.
 
-The CPU contract and the one-world/four-world GPU acceptance test passed. The accepted run validates cloned physics, tensor parity, partial resets, terminal masks, contact reporting, and measured probe throughput. The recurrent policy and collector consume this task through separate modules. The isolated recurrent MAPPO update is also validated; joining collection and updates in recoverable task-connected training remains pending.
+The CPU contract and the one-world/four-world GPU acceptance test passed. The accepted run validates cloned physics, tensor parity, partial resets, terminal masks, contact reporting, and measured probe throughput. The recurrent policy and collector consume this task through separate modules. The isolated recurrent MAPPO update is also validated; a bounded two-process task-connected training and reset-mode resume run has now passed; see [the training contract](19-task-connected-training.md).
 
 ## Task tensors
 

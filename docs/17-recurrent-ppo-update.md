@@ -142,6 +142,7 @@ rollout position, and lineage are absent.
 
 The separate [training recovery contract](18-training-recovery.md) now preserves
 those states, publishes atomically, and falls back from an interrupted or
-corrupt newest save. The next task joins the collector, updater, and recovery
-store in a short task-connected simulator learning run with raw per-update and
-flight metrics.
+corrupt newest save. The bounded [task-connected training run](19-task-connected-training.md) now joins
+the collector, updater, and recovery store in two simulator processes with raw
+per-update and flight metrics. Its critic diagnostics require stability
+calibration before sustained learning.
