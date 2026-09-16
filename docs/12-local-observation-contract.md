@@ -8,7 +8,7 @@ ALiGn now has a simulator-independent observation builder for a shared decentral
 - radius filtering happens before the neighbor budget, with no minimum-neighbor filling outside the radius;
 - fixed padding has an explicit validity mask.
 
-The builder and offline auditor are implemented and CPU-tested. The accepted four-drone physical trajectory has been audited. No neural policy or learning environment consumes these observations yet.
+The builder and offline auditor are implemented and CPU-tested. The accepted four-drone physical trajectory has been audited. The vectorized task now consumes the contract; its cloned-physics acceptance is documented separately. No neural policy consumes these observations yet.
 
 ## Measurement and coordinate assumptions
 
@@ -98,4 +98,4 @@ An observed directed edge means one actor was allowed to use another agent's sta
 
 ## Current limitations
 
-The radius and seven-slot budget are explicit baselines, not proven optimal values. This four-drone trajectory contains no zero-neighbor state and cannot exercise a seven-neighbor budget. The contract has no stale-message age, delay, dropout, uncertainty, obstacles, or multiple-group membership. Observation normalization scales are unsaturated on this trajectory but still need evaluation across randomized training scenarios. The next integration must return these structured actor inputs, reward components, termination flags, and truncation flags from a vectorized OmniDrones task.
+The [vectorized task environment](13-vectorized-task-environment.md) now returns these actor inputs, reward values, termination flags, and truncation flags. Its one-world and four-world GPU acceptance run passed.

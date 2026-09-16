@@ -1,5 +1,6 @@
 """Simulator-independent task contracts shared by training and evaluation."""
 
+from align.tasks.environment import BatchedTaskEnvironment, TaskEnvironmentConfig, TaskStep
 from align.tasks.observation import (
     ActorObservation,
     CriticObservation,
@@ -20,6 +21,7 @@ from align.tasks.reward import (
 
 __all__ = [
     "ActorObservation",
+    "BatchedTaskEnvironment",
     "COMPONENT_NAMES",
     "CriticObservation",
     "ObservationBatch",
@@ -28,6 +30,8 @@ __all__ = [
     "RewardConfig",
     "RewardMemory",
     "RewardStep",
+    "TaskEnvironmentConfig",
+    "TaskStep",
     "build_actor_observations",
     "build_critic_observation",
     "build_observations",

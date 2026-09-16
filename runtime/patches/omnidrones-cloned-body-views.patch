@@ -1,0 +1,32 @@
+--- a/omni_drones/robots/drone/multirotor.py
++++ b/omni_drones/robots/drone/multirotor.py
+@@ -87,13 +87,18 @@
+     def initialize(
+         self,
+         prim_paths_expr: str = None,
+-        track_contact_forces: bool = False
++        track_contact_forces: bool = False,
++        prepare_contact_sensors: bool = True,
++        disable_stablization: bool = True,
+     ):
+         if self.is_articulation:
+             super().initialize(prim_paths_expr=prim_paths_expr)
+             self.base_link = RigidPrimView(
+                 prim_paths_expr=f"{self.prim_paths_expr}/base_link",
+                 name="base_link",
++                reset_xform_properties=False,
++                prepare_contact_sensors=prepare_contact_sensors,
++                disable_stablization=disable_stablization,
+                 track_contact_forces=track_contact_forces,
+                 shape=self.shape,
+             )
+@@ -120,6 +125,9 @@
+             # prim_paths_expr=f"{self.prim_paths_expr}/rotor_[0-{self.num_rotors-1}]",
+             prim_paths_expr=f"{self.prim_paths_expr}/rotor_*",
+             name="rotors",
++            reset_xform_properties=False,
++            prepare_contact_sensors=prepare_contact_sensors,
++            disable_stablization=disable_stablization,
+             shape=(*self.shape, self.num_rotors)
+         )
+         self.rotors_view.initialize()

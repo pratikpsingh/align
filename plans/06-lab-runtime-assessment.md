@@ -1,6 +1,6 @@
 # Lab inventory and simulator runtime assessment
 
-Latest review: 2026-09-16. Lab inventory and the isolated Isaac Sim fast-mode startup/CUDA test are confirmed. OmniDrones integration, drone dynamics, and full extension cleanup remain unvalidated. Earlier dated findings below are retained as history.
+Latest review: 2026-09-16. Lab inventory, the isolated Isaac Sim fast-mode startup/CUDA test, deterministic drone control, and the one/four-world OmniDrones task are confirmed. Full extension cleanup remains unvalidated. Earlier dated findings below are retained as history.
 
 ## Evidence received
 

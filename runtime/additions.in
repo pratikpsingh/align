@@ -1,6 +1,6 @@
-# Complete additional dependency set for the audited drone/controller path.
+# Complete additional dependency set for the audited controller and custom vector-task path.
 # torch, numpy, packaging, PyYAML, scipy and matplotlib come from the base image.
-# Upstream task/training extras are intentionally outside this minimal runtime.
+# Unrelated upstream task/training extras are intentionally outside this runtime.
 torchrl==0.3.1
 tensordict==0.3.2
 cloudpickle==3.0.0

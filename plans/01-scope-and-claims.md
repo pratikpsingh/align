@@ -14,7 +14,7 @@ The submission includes established descriptions, unfinished annotations, propos
 
 ## Retained capability register
 
-IDs identify requirements and experiments; they do not imply implementation order. All ALiGn implementation and experimental validation below remain pending.
+IDs identify requirements and experiments; they do not imply implementation order. The register states final capability-level acceptance requirements; supporting geometry, task, reward, observation, vector-environment, and rollout contracts are implemented, while learned-policy evidence remains pending.
 
 | ID | Requirement | Source evidence or gap | Acceptance evidence |
 |---|---|---|---|

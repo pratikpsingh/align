@@ -10,7 +10,7 @@
     "revision": "454905bf08c374b6162e6c4c64a320aa6261fbe6",
     "tag": "v1.1.0",
     "installed": false,
-    "reason": "Not imported by the audited basic drone/controller path; sensor and task integration deferred."
+    "reason": "Not imported by the audited custom vector task; Isaac Lab sensor tasks are deferred."
   },
   "vendor_inventory_run": "20260916T013244.627902IST-968f4001",
   "vendor_required": {
@@ -33,5 +33,5 @@
     3,
     10
   ],
-  "scope": "Audited single-drone runtime. OmniDrones training/task extras are not installed."
+  "scope": "Audited single/multi-drone controller probes and custom vector task runtime. Unrelated upstream training/task extras are not installed."
 }

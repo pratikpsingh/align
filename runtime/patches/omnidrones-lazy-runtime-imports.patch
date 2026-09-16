@@ -1,0 +1,56 @@
+--- a/omni_drones/envs/__init__.py
++++ b/omni_drones/envs/__init__.py
+@@ -21,20 +21,9 @@
+ # SOFTWARE.
+ 
+ 
+-from .single import Hover, Track, FlyThrough
+-from .payload import PayloadHover, PayloadTrack, PayloadFlyThrough
+-from .inv_pendulum import InvPendulumHover, InvPendulumTrack, InvPendulumFlyThrough
+-from .dragon import DragonHover
+-from .platform import PlatformHover, PlatformTrack, PlatformFlyThrough
+-from .transport import TransportHover, TransportTrack, TransportFlyThrough
+-from .formation import Formation
+-from .rearrange import Rearrange
+ from .isaac_env import IsaacEnv
+ 
+-try:
+-    from .single import Forest, Pinball
+-except ModuleNotFoundError:
+-    print(
+-        "To run the environments which use `ContactSensor` and `RayCaster`,"
+-        "please install Isaac Lab (https://github.com/isaac-sim/IsaacLab)."
+-    )
++__all__ = ["IsaacEnv"]
++
++# ALiGn imports its custom task directly. Upstream task modules remain available
++# through their full module paths without importing every optional task here.
+--- a/omni_drones/utils/torchrl/env.py
++++ b/omni_drones/utils/torchrl/env.py
+@@ -22,8 +22,6 @@
+ 
+ import torch
+ import numpy as np
+-import einops
+-from tqdm import tqdm
+ from typing import Optional, Sequence
+ 
+ from dataclasses import dataclass
+@@ -88,6 +86,8 @@
+         self.interval = interval
+         self.frames = []
+         self.i = 0
++
++        from tqdm import tqdm
+         self.t = tqdm(desc="Rendering")
+ 
+     def __call__(self, env, *args):
+@@ -99,6 +99,8 @@
+         return self.i
+ 
+     def get_video_array(self, axes: str = "t c h w"):
++        import einops
++
+         return einops.rearrange(np.stack(self.frames), "t h w c -> " + axes)
+ 
+ 

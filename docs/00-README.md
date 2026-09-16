@@ -16,5 +16,7 @@ Start here, then follow the numbered files in order. The prefixes describe readi
 10. [Multi-drone construction](10-multi-drone-construction.md): group identities, ground takeoff, safety, dwell success, and lab command.
 11. [Task reward contract](11-task-reward-contract.md): active formation and safety terms, aggregation, configuration, and trajectory audit.
 12. [Local observation contract](12-local-observation-contract.md): bounded actor inputs, radius and budget rules, masks, critic separation, and topology audit.
+13. [Vectorized task environment](13-vectorized-task-environment.md): step/reset semantics, cloned worlds, tensor shapes, episode masks, GPU acceptance, and artifacts.
+14. [Recurrent rollout contract](14-recurrent-rollout-contract.md): temporal storage, GAE masks, LSTM states, episode-safe chunks, and CPU report.
 
 For beginner explanations, begin with the [learning index](../learning/00-README.md). For research scope and intended implementation, use the [planning index](../plans/00-README.md). Setup instructions distinguish CPU contracts, implemented simulator behavior, and pending research validation.

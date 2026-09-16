@@ -13,7 +13,7 @@ Dependencies: access to the current scaffold and the lab machine's hardware/runt
 - [x] Receive lab inventory: GPU models and per-device VRAM, driver, OS, host RAM, and filesystem capacity. GPU allocation/container access and simulator-build compatibility still need verification.
 - [x] Select an OmniDrones revision and compatible Isaac Sim/Python/PyTorch/TorchRL/TensorDict combination. Review licenses and asset requirements; see [pinned runtime](../docs/07-omnidrones-runtime.md).
 - [x] Validate uv integration in a derived image while preserving vendor PyTorch. Audit shared Python >=3.10 compatibility and maintain separate host/additional-runtime locks.
-- [x] Establish the src package, validated diagnostic configuration, CLI, offline logging, and machine-readable inventory reports. Training configuration and simulator compatibility checks remain future work.
+- [x] Establish the src package, validated diagnostic configuration, CLI, offline logging, and machine-readable inventory reports. Training configuration remains future work; the pinned simulator compatibility and vector-task checks have passed.
 - [x] Run the isolated headless Isaac Sim startup/CUDA check on the lab; fast-mode run 20260916T010519.212064IST-5253d3c9 passed.
 - [x] Integrate pinned OmniDrones dependencies and run an actual drone observation/action/reset check. Record exact commands, trajectories, and outcomes; accepted run `20260916T101342.169928IST-39fd6f42`.
 
@@ -28,6 +28,7 @@ Dependencies: configuration foundation; GPU runtime for integration checks.
 - [x] Implement reset, ground takeoff, goal tracking, dwell-based success, time limits, and explicit termination reasons. Accepted four-drone plane run `20260916T121136.980227IST-48963b76` passed 30/30 checks over two successful episodes.
 - [x] Integrate a calibrated low-level controller and validate commanded motion before policy learning.
 - [x] Implement reward components as separately logged quantities, including an active formation term and inter-UAV safety. Audit `20260916T122706.141515IST-e549a070` produced 8,840 finite component rows from the accepted physical trajectory; online learning integration remains future work.
+- [x] Validate the one/four-environment vector task on the lab GPU. Run 20260916T162804.441981IST-29e96228 passed cloned physics, contact sensing, tensor parity, partial-reset isolation, true termination, time-limit truncation, raw trajectory audits, and measured probe throughput.
 
 Acceptance: simple controlled motion behaves in the correct axis/units; reset and target placement are reproducible; analytical geometry examples match metrics; physical contacts and distance violations are distinct. Include diagrams or small numerical examples in the learning explanation.
 
@@ -38,6 +39,7 @@ Dependencies: stable task contracts and reward/termination semantics.
 - [ ] Implement a shared actor with a fixed-capacity masked or set-based neighbor encoder, LSTM memory, and an explicitly defined continuous-action distribution.
 - [ ] Keep centralized critic inputs separate from actor inputs. Normalize observations using saved training statistics.
 - [ ] Implement rollout collection, GAE, PPO updates, actual temporal sequence unrolling, and per-agent recurrent resets.
+  - [x] Define and CPU-validate time-major rollout storage, separate bootstrap/trace/reset masks, GAE, initial LSTM states, padding masks, and episode-safe chunks. Device-resident collection and PPO remain pending.
 - [ ] Preserve sequence ordering, chunk boundaries, initial recurrent states, and valid-sample masks during minibatching.
 - [ ] Handle true termination and time-limit truncation correctly, using the final observation where bootstrap is appropriate.
 - [ ] Demonstrate finite gradients/updates, episode isolation, and dependence on prior observations in a meaningful memory check.

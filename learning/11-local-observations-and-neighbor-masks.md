@@ -101,7 +101,7 @@ One broadcast might serve several neighbors. A packet has headers and may be ret
 
 ## What comes next
 
-The next bounded task is a small vectorized OmniDrones environment contract. It must combine:
+The next implemented task is a small vectorized OmniDrones environment contract. It combines:
 
 - these actor and critic observations;
 - the audited reward components;
@@ -109,4 +109,4 @@ The next bounded task is a small vectorized OmniDrones environment contract. It 
 - reset-safe per-environment memory;
 - the validated velocity controller.
 
-Only after those outputs are correct should recurrent rollout storage and MAPPO updates be implemented.
+Its CPU contracts and cloned-physics acceptance pass. The next learning topic explains its state and reset behavior; the recurrent rollout topic then defines the checked temporal storage contract used before MAPPO updates.
