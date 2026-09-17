@@ -228,6 +228,7 @@ def run(
     resume: bool = False,
     source_identity: str | None = None,
     runtime_identity: str | None = None,
+    evaluation_update: int | None = None,
 ):
     started = time.perf_counter()
     (
@@ -267,6 +268,10 @@ def run(
         raise ValueError(f"{scenario} scenario requires the stability section")
     if scenario == "critic-calibration" and critic_calibration is None:
         raise ValueError("critic-calibration scenario requires the critic_calibration section")
+    if evaluation_update is not None and (
+        scenario != "evaluation" or type(evaluation_update) is not int or evaluation_update < 0
+    ):
+        raise ValueError("evaluation_update must be a nonnegative integer used only for evaluation")
     if scenario in ("training", "stability", "evaluation", "critic-calibration") and any(
         value is None
         for value in (
@@ -1055,6 +1060,7 @@ def run(
                 training_config=training,
                 stability_config=stability,
                 event=event,
+                checkpoint_update=evaluation_update,
             )
             save_json(output / "metrics.json", metrics)
             result.update(
@@ -1436,6 +1442,7 @@ def main(argv=None):
     parser.add_argument("--logical-run-id")
     parser.add_argument("--attempt-id")
     parser.add_argument("--checkpoint-directory", type=Path)
+    parser.add_argument("--evaluation-update", type=int)
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--source-identity")
     parser.add_argument("--runtime-identity")
@@ -1452,6 +1459,7 @@ def main(argv=None):
         resume=args.resume,
         source_identity=args.source_identity,
         runtime_identity=args.runtime_identity,
+        evaluation_update=args.evaluation_update,
     )
 
 

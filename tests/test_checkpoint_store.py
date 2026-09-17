@@ -49,6 +49,21 @@ class CheckpointStoreTests(unittest.TestCase):
             f"checkpoint-{newest['checkpoint_id']}.json",
         )
 
+    def test_exact_update_selection_does_not_fall_to_latest(self):
+        zero = self.save(0, b"initial")
+        self.save(1, b"first")
+        second = self.save(2, b"second")
+        selected, path = self.store.for_update(0)
+        self.assertEqual(selected["checkpoint_id"], zero["checkpoint_id"])
+        self.assertEqual(path.read_bytes(), b"initial")
+        selected, path = self.store.for_update(2)
+        self.assertEqual(selected["checkpoint_id"], second["checkpoint_id"])
+        self.assertEqual(path.read_bytes(), b"second")
+        with self.assertRaises(FileNotFoundError):
+            self.store.for_update(3)
+        with self.assertRaises(ValueError):
+            self.store.for_update(-1)
+
     def test_corrupt_newest_and_broken_pointer_fall_back_to_previous(self):
         first = self.save(1, b"first")
         second = self.save(2, b"second")

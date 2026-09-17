@@ -25,5 +25,6 @@ Start here, then follow the numbered files in order. The prefixes describe readi
 19. [Bounded task-connected training](19-task-connected-training.md): two-process live collection and PPO, checkpoint lineage, raw metrics, resume audit, and stability limits.
 20. [Training stability and deterministic evaluation](20-training-stability-and-evaluation.md): multi-seed update calibration, post-update diagnostics, fresh-process checkpoint evaluation, and artifacts.
 21. [Critic scale and matched-rollout calibration](21-critic-scale-calibration.md): value-target distributions, identical-batch learning-rate comparisons, raw samples, and selection guidance.
+22. [Bounded learning curves and checkpoint evaluation](22-bounded-learning-curves.md): exact milestone loading, multi-seed trends, budgets, and artifacts.
 
 For beginner explanations, begin with the [learning index](../learning/00-README.md). For research scope and intended implementation, use the [planning index](../plans/00-README.md). Setup instructions distinguish CPU contracts, implemented simulator behavior, and pending research validation.

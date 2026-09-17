@@ -45,6 +45,7 @@ Start with the [numbered documentation index](docs/00-README.md). For conceptual
 - [Task-connected training](docs/19-task-connected-training.md): live task rollouts, PPO updates, process restart, and checkpoint lineage.
 - [Training stability and evaluation](docs/20-training-stability-and-evaluation.md): multi-seed calibration, post-update diagnostics, and deterministic checkpoint evaluation.
 - [Critic scale calibration](docs/21-critic-scale-calibration.md): matched-rollout critic learning-rate comparison and value distribution evidence.
+- [Bounded learning curves](docs/22-bounded-learning-curves.md): ten-update, two-seed training with exact update 0/5/10 checkpoint evaluation.
 - [Lab handoff](docs/06-lab-handoff.md): verified runtime, next task, and a continuation prompt.
 - [Working agreement](AGENTS.md): implementation, teaching, and research-record requirements.
 

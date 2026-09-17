@@ -126,8 +126,14 @@ def run_stability_training(
             ),
         )
     ]
+    lineage_is_contiguous = all(
+        current["start_checkpoint_id"] == previous["committed_checkpoint_id"]
+        and current["checkpoint_parent_sha256"] == previous["committed_checkpoint_sha256"]
+        for previous, current in zip(attempts[:-1], attempts[1:], strict=True)
+    )
     checks = {
         "all_updates_passed": all(item["status"] == "passed" for item in attempts),
+        "checkpoint_lineage_is_contiguous": lineage_is_contiguous,
         "update_count_is_exact": len(attempts) == stability_config.updates_per_seed,
         "completed_update_counter_is_exact": final["end_counters"]["completed_updates"]
         == stability_config.updates_per_seed,

@@ -190,6 +190,24 @@ class CheckpointStore:
             raise ValueError("checkpoint payload checksum or size differs")
         return manifest, path
 
+    def for_update(self, completed_updates: int) -> tuple[dict, Path]:
+        """Select one exact valid update without falling forward or backward."""
+        if type(completed_updates) is not int or completed_updates < 0:
+            raise ValueError("completed_updates must be a nonnegative integer")
+        matches = []
+        for candidate in self.directory.glob("checkpoint-*.json"):
+            try:
+                manifest, payload = self.verify(candidate)
+            except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError):
+                continue
+            if manifest["completed_updates"] == completed_updates:
+                matches.append((manifest, payload))
+        if len(matches) > 1:
+            raise ValueError(f"multiple valid checkpoints exist for update {completed_updates}")
+        if not matches:
+            raise FileNotFoundError(f"no valid checkpoint exists for update {completed_updates}")
+        return matches[0]
+
     def latest_valid(self) -> tuple[dict, Path]:
         """Prefer highest committed update; fall back past incomplete/corrupt saves."""
         manifests = sorted(

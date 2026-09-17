@@ -10,6 +10,7 @@ import subprocess
 import tarfile
 import time
 from pathlib import Path
+from threading import Event, Thread
 
 from align.artifacts import as_ist, create_run_directory, utc_now, write_json_atomic
 from align.runtime.diagnostics import probe_source, probe_system
@@ -85,6 +86,46 @@ def new_report():
 
 def docker_prefix(mode):
     return ["sudo", "-n", "docker"] if mode == "sudo" else ["docker"]
+
+
+class SudoKeepalive:
+    """Refresh one already-authenticated sudo timestamp during long host runs."""
+
+    def __init__(self, enabled: bool, interval_seconds: float = 60.0):
+        self.enabled = enabled
+        self.interval_seconds = interval_seconds
+        self._stop = Event()
+        self._thread = None
+        self.refresh_count = 0
+        self.failures = []
+
+    def start(self) -> None:
+        if not self.enabled:
+            return
+        initial = capture(["sudo", "-n", "-v"])
+        if initial["exit_code"]:
+            raise RuntimeError("sudo authentication expired; run sudo -v and retry")
+        self._thread = Thread(target=self._refresh, name="align-sudo-keepalive", daemon=True)
+        self._thread.start()
+
+    def _refresh(self) -> None:
+        while not self._stop.wait(self.interval_seconds):
+            result = capture(["sudo", "-n", "-v"])
+            self.refresh_count += 1
+            if result["exit_code"]:
+                self.failures.append(result)
+
+    def stop(self) -> dict:
+        self._stop.set()
+        if self._thread is not None:
+            self._thread.join(timeout=max(1.0, self.interval_seconds))
+        return {
+            "enabled": self.enabled,
+            "interval_seconds": self.interval_seconds,
+            "refresh_count": self.refresh_count,
+            "failure_count": len(self.failures),
+            "failures": self.failures,
+        }
 
 
 def prepare(root, run):

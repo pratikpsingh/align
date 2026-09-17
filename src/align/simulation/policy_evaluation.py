@@ -54,8 +54,9 @@ def run_policy_evaluation(
     training_config: TaskTrainingConfig,
     stability_config: StabilityConfig,
     event,
+    checkpoint_update: int | None = None,
 ) -> dict:
-    """Load the final checkpoint and execute deterministic actor means only."""
+    """Load one requested checkpoint and execute deterministic actor means only."""
     actor = SharedRecurrentActor(policy_config).to(env.device)
     critic = CentralizedRecurrentCritic(policy_config).to(env.device)
     actor_optimizer = _optimizer(actor, ppo_config.actor_learning_rate, ppo_config)
@@ -66,7 +67,12 @@ def run_policy_evaluation(
         config_sha256=config_sha256,
         file_mode=0o644,
     )
-    manifest, payload = store.latest_valid()
+    if checkpoint_update is None:
+        manifest, payload = store.latest_valid()
+        expected_update = stability_config.updates_per_seed
+    else:
+        manifest, payload = store.for_update(checkpoint_update)
+        expected_update = checkpoint_update
     restored = restore_learner_state(
         payload,
         actor=actor,
@@ -77,7 +83,6 @@ def run_policy_evaluation(
     )
     if restored["normalization"].get("enabled"):
         raise NotImplementedError("evaluation for empirical normalization is not implemented")
-    expected_update = stability_config.updates_per_seed
     actor.eval()
     before = {name: value.detach().clone() for name, value in actor.state_dict().items()}
 
@@ -179,7 +184,7 @@ def run_policy_evaluation(
     )
     denominator = stability_config.evaluation_steps * num_envs
     checks = {
-        "loaded_final_completed_update": manifest["completed_updates"] == expected_update,
+        "loaded_requested_completed_update": manifest["completed_updates"] == expected_update,
         "deterministic_actor_used": True,
         "raw_row_count_is_exact": raw_rows == denominator,
         "observations_and_metrics_are_finite": nonfinite_rows == 0
@@ -201,6 +206,7 @@ def run_policy_evaluation(
         "checkpoint_id": manifest["checkpoint_id"],
         "checkpoint_sha256": manifest["payload"]["sha256"],
         "completed_updates": manifest["completed_updates"],
+        "requested_completed_update": expected_update,
         "deterministic_actions": True,
         "optimizer_updates": 0,
         "evaluation_steps": stability_config.evaluation_steps,
