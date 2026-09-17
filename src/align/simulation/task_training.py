@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import csv
 import math
+import os
 import time
 from pathlib import Path
 
 import torch
 
+from align.artifacts import write_json_atomic
 from align.learning.checkpoint_store import CheckpointStore
 from align.learning.critic_normalization_config import CriticNormalizationConfig
 from align.learning.ppo_config import RecurrentPPOConfig
@@ -60,6 +62,11 @@ ROLLOUT_COLUMNS = (
     "truncated",
     "reason_code",
 )
+
+
+class InjectedTrainingInterruption(RuntimeError):
+    """Expected acceptance-only interruption after a partial live rollout."""
+
 
 NORMALIZATION_WARMUP_COLUMNS = (
     "warmup_step",
@@ -276,11 +283,16 @@ def run_training_attempt(
     critic_normalization_config: CriticNormalizationConfig,
     event,
     critic_calibration_config=None,
+    fault_after_rollout_step: int | None = None,
 ) -> dict:
     """Collect one real-task rollout, update once, and commit the boundary."""
     del recovery_config
     started = time.perf_counter()
     cfg = rollout_config
+    if fault_after_rollout_step is not None and (
+        type(fault_after_rollout_step) is not int or not 1 <= fault_after_rollout_step < cfg.horizon
+    ):
+        raise ValueError("fault_after_rollout_step must be inside the rollout horizon")
     if (env.num_envs, env.construction_cfg.num_agents) != (cfg.num_envs, cfg.num_agents):
         raise ValueError("training environment and rollout batch dimensions differ")
     policy_config.validate_task_dimensions(
@@ -523,6 +535,32 @@ def run_training_attempt(
                 )
                 actor_memory = next_actor_memory
                 critic_memory = next_critic_memory
+                completed_rollout_steps = step + 1
+                if fault_after_rollout_step == completed_rollout_steps:
+                    stream.flush()
+                    os.fsync(stream.fileno())
+                    interruption = {
+                        "schema_version": 1,
+                        "kind": "injected_mid_rollout_interruption",
+                        "attempt_id": attempt_id,
+                        "start_checkpoint_id": start_manifest["checkpoint_id"],
+                        "start_checkpoint_sha256": start_manifest["payload"]["sha256"],
+                        "completed_updates_before": start_counters["completed_updates"],
+                        "partial_rollout_steps": completed_rollout_steps,
+                        "discarded_environment_transitions": (
+                            completed_rollout_steps * cfg.num_envs
+                        ),
+                        "discarded_agent_transitions": (
+                            completed_rollout_steps * cfg.num_envs * cfg.num_agents
+                        ),
+                        "ppo_update_started": False,
+                        "checkpoint_committed": False,
+                    }
+                    write_json_atomic(output / "interruption.json", interruption, mode=0o644)
+                    event("training_interruption_injected", **interruption)
+                    raise InjectedTrainingInterruption(
+                        f"injected interruption after {completed_rollout_steps} rollout steps"
+                    )
     collection_seconds = time.perf_counter() - collection_started
     critic_distribution = summarize_critic_rollout_distribution(
         raw_critic_states,

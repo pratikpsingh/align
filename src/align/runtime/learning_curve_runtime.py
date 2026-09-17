@@ -325,6 +325,9 @@ def _command(
     evaluation_update: int | None = None,
     training_start_update: int | None = None,
     training_stop_update: int | None = None,
+    fault_at_update: int | None = None,
+    fault_after_rollout_step: int | None = None,
+    logical_run_name: str | None = None,
 ) -> list[str]:
     relative_seed = seed_directory.relative_to(run)
     relative_output = output_directory.relative_to(run)
@@ -335,7 +338,7 @@ def _command(
         phase = "train"
     else:
         phase = f"evaluation-{evaluation_update:04d}"
-    logical_run_id = f"{run.name}-seed-{seed_label.split('-')[-1]}"
+    logical_run_id = f"{logical_run_name or run.name}-seed-{seed_label.split('-')[-1]}"
     command = [
         *docker,
         "run",
@@ -391,6 +394,15 @@ def _command(
                 str(training_stop_update),
             )
         )
+    if fault_at_update is not None:
+        command.extend(
+            (
+                "--fault-at-update",
+                str(fault_at_update),
+                "--fault-after-rollout-step",
+                str(fault_after_rollout_step),
+            )
+        )
     return command
 
 
@@ -418,10 +430,22 @@ def run_main(
     parser.add_argument("--learning-curve-config", type=Path)
     parser.add_argument("--build-report", type=Path)
     parser.add_argument("--timeout", type=int, default=1800)
+    parser.add_argument("--inject-interruption-seed", type=int)
+    parser.add_argument("--inject-interruption-update", type=int)
+    parser.add_argument("--inject-interruption-rollout-step", type=int)
     parser.add_argument("--accept-eula", action="store_true")
     args = parser.parse_args(argv)
     if not args.accept_eula or args.gpu < 0 or not 60 <= args.timeout <= 3600:
         parser.error("Require --accept-eula, a nonnegative allocated GPU, and timeout 60-3600")
+    injection_values = (
+        args.inject_interruption_seed,
+        args.inject_interruption_update,
+        args.inject_interruption_rollout_step,
+    )
+    if any(value is not None for value in injection_values) and not all(
+        value is not None for value in injection_values
+    ):
+        parser.error("Interruption injection requires seed, update, and rollout step together")
 
     root = project_root()
     args.task_config = args.task_config or root / "configs/recurrent-stability-task.json"
@@ -432,7 +456,21 @@ def run_main(
         LearningCurveConfig,
     )
     stability = curve.to_stability_config()
+    if args.inject_interruption_seed is not None and (
+        curve.schema_version != 2
+        or args.inject_interruption_seed not in curve.policy_seeds
+        or type(args.inject_interruption_update) is not int
+        or args.inject_interruption_update
+        not in {start + 1 for start, _ in curve.segment_ranges() if start > 0}
+    ):
+        raise ValueError(
+            "interruption injection must target the first update of a noninitial segment"
+        )
     resolved = load_resolved_config(root, args)
+    if args.inject_interruption_seed is not None and not (
+        1 <= args.inject_interruption_rollout_step < resolved["rollout"]["horizon"]
+    ):
+        raise ValueError("injected rollout step must be inside the configured horizon")
     validate_stability_resolved_config(resolved, stability)
     resolved["stability"] = stability.to_dict()
 
@@ -486,6 +524,15 @@ def run_main(
         sustained_training_performed=False,
         deterministic_evaluation_performed=False,
         scientific_result=False,
+        planned_training_interruption=(
+            {
+                "policy_seed": args.inject_interruption_seed,
+                "update": args.inject_interruption_update,
+                "rollout_step": args.inject_interruption_rollout_step,
+            }
+            if args.inject_interruption_seed is not None
+            else None
+        ),
         rendering_validated=False,
         video_validated=False,
         seeds=[],
@@ -546,6 +593,18 @@ def run_main(
                     scenario="stability",
                     training_start_update=start_update if segmented else None,
                     training_stop_update=stop_update if segmented else None,
+                    fault_at_update=(
+                        args.inject_interruption_update
+                        if seed == args.inject_interruption_seed
+                        and start_update < args.inject_interruption_update <= stop_update
+                        else None
+                    ),
+                    fault_after_rollout_step=(
+                        args.inject_interruption_rollout_step
+                        if seed == args.inject_interruption_seed
+                        and start_update < args.inject_interruption_update <= stop_update
+                        else None
+                    ),
                 )
                 active_container = command[command.index("--name") + 1]
                 phase_started = time.perf_counter()
@@ -568,6 +627,19 @@ def run_main(
                 item["train"] = {"segments": segment_records}
                 write_json_atomic(run / "report.json", report)
                 if not valid_phase(exit_code, probe, metrics, "training_stability_tested"):
+                    if "--fault-at-update" in command:
+                        interruption_path = (
+                            train_output
+                            / f"update-{args.inject_interruption_update:04d}"
+                            / "interruption.json"
+                        )
+                        if interruption_path.is_file():
+                            report["observed_training_interruption"] = json.loads(
+                                interruption_path.read_text()
+                            )
+                            report["status"] = "interrupted"
+                            write_json_atomic(run / "report.json", report)
+                            return 2
                     raise RuntimeError(
                         f"seed {seed} training segment {start_update}:{stop_update} failed"
                     )

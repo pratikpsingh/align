@@ -250,6 +250,8 @@ def run(
     evaluation_update: int | None = None,
     training_start_update: int = 0,
     training_stop_update: int | None = None,
+    fault_at_update: int | None = None,
+    fault_after_rollout_step: int | None = None,
 ):
     started = time.perf_counter()
     (
@@ -296,6 +298,10 @@ def run(
         raise ValueError("evaluation_update must be a nonnegative integer used only for evaluation")
     if scenario != "stability" and (training_start_update != 0 or training_stop_update is not None):
         raise ValueError("training update ranges are valid only for stability")
+    if (fault_at_update is None) != (fault_after_rollout_step is None):
+        raise ValueError("fault update and rollout step must be declared together")
+    if scenario != "stability" and fault_at_update is not None:
+        raise ValueError("fault injection is valid only for stability training")
     if scenario in ("training", "stability", "evaluation", "critic-calibration") and any(
         value is None
         for value in (
@@ -1057,6 +1063,8 @@ def run(
                 event=event,
                 start_update=training_start_update,
                 stop_update=training_stop_update,
+                fault_at_update=fault_at_update,
+                fault_after_rollout_step=fault_after_rollout_step,
             )
             save_json(output / "metrics.json", metrics)
             result.update(
@@ -1475,6 +1483,8 @@ def main(argv=None):
     parser.add_argument("--evaluation-update", type=int)
     parser.add_argument("--training-start-update", type=int, default=0)
     parser.add_argument("--training-stop-update", type=int)
+    parser.add_argument("--fault-at-update", type=int)
+    parser.add_argument("--fault-after-rollout-step", type=int)
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--source-identity")
     parser.add_argument("--runtime-identity")
@@ -1494,6 +1504,8 @@ def main(argv=None):
         evaluation_update=args.evaluation_update,
         training_start_update=args.training_start_update,
         training_stop_update=args.training_stop_update,
+        fault_at_update=args.fault_at_update,
+        fault_after_rollout_step=args.fault_after_rollout_step,
     )
 
 

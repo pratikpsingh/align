@@ -258,6 +258,30 @@ class SegmentedLearningTests(unittest.TestCase):
         )
         self.assertIn("segment-0004-0008", command[command.index("--name") + 1])
 
+    def test_fault_command_is_explicit_and_bound_to_one_update(self):
+        with TemporaryDirectory() as directory:
+            run = Path(directory)
+            seed = run / "seed-0000000041"
+            output = seed / "train-segment-0004-0008"
+            output.mkdir(parents=True)
+            command = _command(
+                ["docker"],
+                run=run,
+                seed_directory=seed,
+                output_directory=output,
+                image_id="sha256:test",
+                gpu=0,
+                num_envs=4,
+                source_identity="source",
+                scenario="stability",
+                training_start_update=4,
+                training_stop_update=8,
+                fault_at_update=5,
+                fault_after_rollout_step=64,
+            )
+        self.assertEqual(command[command.index("--fault-at-update") + 1], "5")
+        self.assertEqual(command[command.index("--fault-after-rollout-step") + 1], "64")
+
 
 if __name__ == "__main__":
     unittest.main()

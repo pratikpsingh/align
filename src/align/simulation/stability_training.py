@@ -58,6 +58,8 @@ def run_stability_training(
     event,
     start_update: int = 0,
     stop_update: int | None = None,
+    fault_at_update: int | None = None,
+    fault_after_rollout_step: int | None = None,
 ) -> dict:
     """Collect a contiguous update range for one configured seed."""
     if training_config.attempts != stability_config.updates_per_seed:
@@ -71,6 +73,15 @@ def run_stability_training(
         or not 0 <= start_update < stop_update <= stability_config.updates_per_seed
     ):
         raise ValueError("update range must satisfy 0 <= start < stop <= updates_per_seed")
+    if (fault_at_update is None) != (fault_after_rollout_step is None):
+        raise ValueError("fault update and rollout step must be declared together")
+    if fault_at_update is not None and (
+        type(fault_at_update) is not int
+        or not start_update < fault_at_update <= stop_update
+        or type(fault_after_rollout_step) is not int
+        or not 1 <= fault_after_rollout_step < rollout_config.horizon
+    ):
+        raise ValueError("fault target must be inside this segment and rollout")
 
     attempts = []
     all_mask = torch.ones(env.num_envs, dtype=torch.bool, device=env.device)
@@ -106,6 +117,9 @@ def run_stability_training(
             training_config=training_config,
             critic_normalization_config=critic_normalization_config,
             event=event,
+            fault_after_rollout_step=(
+                fault_after_rollout_step if number == fault_at_update else None
+            ),
         )
         metrics["stability_guidance"] = _assessment(metrics, stability_config)
         write_json_atomic(attempt_output / "metrics.json", metrics, mode=0o644)
