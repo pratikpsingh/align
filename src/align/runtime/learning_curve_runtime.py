@@ -176,6 +176,75 @@ def summarize_learning_curve(items: list[dict], config: LearningCurveConfig) -> 
     }
 
 
+def combine_segment_metrics(segments: list[dict], config: LearningCurveConfig) -> dict:
+    """Join disjoint simulator segments and audit their checkpoint boundary."""
+    if not segments:
+        raise ValueError("segmented learning requires at least one segment")
+    if len(segments) == 1:
+        return segments[0]["metrics"]
+    actual_ranges = tuple((item["start_update"], item["stop_update"]) for item in segments)
+    expected_ranges = config.segment_ranges()
+    measurements = [row for item in segments for row in item["metrics"]["measurements"]]
+    normalization = segments[0]["metrics"]["critic_normalization"]
+    restart_index = config.planned_restart_after_segment
+    checks = {
+        "segment_ranges_are_exact": actual_ranges == expected_ranges,
+        "all_segments_passed": all(item["metrics"]["status"] == "passed" for item in segments),
+        "checkpoint_lineage_is_contiguous_across_processes": all(
+            current["metrics"]["initial_checkpoint_id"]
+            == previous["metrics"]["final_checkpoint_id"]
+            and current["metrics"]["initial_checkpoint_sha256"]
+            == previous["metrics"]["final_checkpoint_sha256"]
+            for previous, current in zip(segments[:-1], segments[1:], strict=True)
+        ),
+        "completed_updates_are_exact": [row["completed_update"] for row in measurements]
+        == list(range(1, config.updates_per_seed + 1)),
+        "final_counter_is_exact": segments[-1]["metrics"]["final_counters"]["completed_updates"]
+        == config.updates_per_seed,
+        "normalization_state_is_identical_across_segments": all(
+            item["metrics"]["critic_normalization"] == normalization for item in segments
+        ),
+        "normalization_warmup_not_repeated": all(
+            item["metrics"]["critic_normalization_warmup_environment_transitions"] == 0
+            for item in segments[1:]
+        ),
+        "planned_process_restart_observed": (
+            restart_index is not None
+            and segments[restart_index - 1]["exit_code"] == 0
+            and segments[restart_index]["metrics"]["segment_start_update"]
+            == segments[restart_index - 1]["metrics"]["segment_stop_update"]
+            and segments[restart_index]["container_name"]
+            != segments[restart_index - 1]["container_name"]
+        ),
+    }
+    return {
+        "status": "passed" if all(checks.values()) else "failed",
+        "checks": checks,
+        "policy_seed": segments[0]["metrics"]["policy_seed"],
+        "segment_count": len(segments),
+        "segment_ranges": [list(item) for item in actual_ranges],
+        "planned_restart_after_segment": restart_index,
+        "updates": config.updates_per_seed,
+        "critic_normalization": normalization,
+        "critic_normalization_warmup_environment_transitions": sum(
+            item["metrics"]["critic_normalization_warmup_environment_transitions"]
+            for item in segments
+        ),
+        "critic_normalization_warmup_agent_transitions": sum(
+            item["metrics"]["critic_normalization_warmup_agent_transitions"] for item in segments
+        ),
+        "critic_normalization_warmup_seconds": sum(
+            item["metrics"]["critic_normalization_warmup_seconds"] for item in segments
+        ),
+        "initial_checkpoint_id": segments[0]["metrics"]["initial_checkpoint_id"],
+        "initial_checkpoint_sha256": segments[0]["metrics"]["initial_checkpoint_sha256"],
+        "final_checkpoint_id": segments[-1]["metrics"]["final_checkpoint_id"],
+        "final_checkpoint_sha256": segments[-1]["metrics"]["final_checkpoint_sha256"],
+        "final_counters": segments[-1]["metrics"]["final_counters"],
+        "measurements": measurements,
+    }
+
+
 def write_learning_curve_tables(run: Path, summary: dict) -> None:
     """Write compact long-form CSV tables derived from the JSON summary."""
     training_metrics = (
@@ -254,11 +323,18 @@ def _command(
     source_identity: str,
     scenario: str,
     evaluation_update: int | None = None,
+    training_start_update: int | None = None,
+    training_stop_update: int | None = None,
 ) -> list[str]:
     relative_seed = seed_directory.relative_to(run)
     relative_output = output_directory.relative_to(run)
     seed_label = relative_seed.name
-    phase = "train" if scenario == "stability" else f"evaluation-{evaluation_update:04d}"
+    if scenario == "stability" and training_stop_update is not None:
+        phase = f"segment-{training_start_update:04d}-{training_stop_update:04d}"
+    elif scenario == "stability":
+        phase = "train"
+    else:
+        phase = f"evaluation-{evaluation_update:04d}"
     logical_run_id = f"{run.name}-seed-{seed_label.split('-')[-1]}"
     command = [
         *docker,
@@ -306,10 +382,24 @@ def _command(
     ]
     if evaluation_update is not None:
         command.extend(("--evaluation-update", str(evaluation_update)))
+    if training_stop_update is not None:
+        command.extend(
+            (
+                "--training-start-update",
+                str(training_start_update),
+                "--training-stop-update",
+                str(training_stop_update),
+            )
+        )
     return command
 
 
-def run_main(argv=None) -> int:
+def run_main(
+    argv=None,
+    *,
+    default_curve_config: str = "learning-curve-baseline.json",
+    run_category: str = "learning-curve",
+) -> int:
     parser = argparse.ArgumentParser(
         description="Run bounded training with fresh-process checkpoint evaluations."
     )
@@ -338,7 +428,7 @@ def run_main(argv=None) -> int:
     args.rollout_config = args.rollout_config or root / "configs/recurrent-stability-rollout.json"
     args.ppo_config = args.ppo_config or root / "configs/recurrent-ppo-selected.json"
     curve = _load(
-        args.learning_curve_config or root / "configs/learning-curve-baseline.json",
+        args.learning_curve_config or root / "configs" / default_curve_config,
         LearningCurveConfig,
     )
     stability = curve.to_stability_config()
@@ -353,7 +443,7 @@ def run_main(argv=None) -> int:
     if build["status"] != "built":
         raise RuntimeError("A successfully built runtime image is required")
 
-    run = create_run_directory(root / "runs/learning-curve")
+    run = create_run_directory(root / "runs" / run_category)
     write_json_atomic(run / "config.json", resolved)
     write_json_atomic(run / "learning-curve-config.json", curve.to_dict())
     shutil.copy2(build_path, run / "build-report.json")
@@ -361,7 +451,15 @@ def run_main(argv=None) -> int:
     for seed in curve.policy_seeds:
         seed_directory = run / f"seed-{seed:010d}"
         (seed_directory / "checkpoints").mkdir(parents=True)
-        (seed_directory / "train/kit-logs").mkdir(parents=True)
+        if curve.updates_per_segment is None:
+            (seed_directory / "train/kit-logs").mkdir(parents=True)
+        else:
+            for start_update, stop_update in curve.segment_ranges():
+                (
+                    seed_directory
+                    / f"train-segment-{start_update:04d}-{stop_update:04d}"
+                    / "kit-logs"
+                ).mkdir(parents=True)
         for milestone in curve.evaluation_milestones:
             (seed_directory / f"evaluation-update-{milestone:04d}/kit-logs").mkdir(parents=True)
         seed_config = copy.deepcopy(resolved)
@@ -382,6 +480,9 @@ def run_main(argv=None) -> int:
         system=probe_system().details,
         learning_curve_config=curve.to_dict(),
         bounded_training_performed=True,
+        segmented_training_performed=curve.updates_per_segment is not None,
+        fresh_process_training_resumes=max(0, len(curve.segment_ranges()) - 1)
+        * len(curve.policy_seeds),
         sustained_training_performed=False,
         deterministic_evaluation_performed=False,
         scientific_result=False,
@@ -407,7 +508,7 @@ def run_main(argv=None) -> int:
     write_json_atomic(run / "report.json", report)
     print(
         f"{report['started_at_ist']} IST Run: {run}\n"
-        "Follow each seed's train/console.log and evaluation-update-*/console.log files.",
+        "Follow each seed's train*/console.log and evaluation-update-*/console.log files.",
         flush=True,
     )
 
@@ -424,37 +525,87 @@ def run_main(argv=None) -> int:
             item = {"policy_seed": seed, "evaluations": []}
             report["seeds"].append(item)
 
-            train_output = seed_directory / "train"
-            command = _command(
-                docker,
-                run=run,
-                seed_directory=seed_directory,
-                output_directory=train_output,
-                image_id=build["image_id"],
-                gpu=args.gpu,
-                num_envs=resolved["rollout"]["num_envs"],
-                source_identity=source_identity,
-                scenario="stability",
-            )
-            active_container = command[command.index("--name") + 1]
-            phase_started = time.perf_counter()
-            exit_code = execute(command, train_output / "console.log", args.timeout)
-            probe_path = train_output / "probe-result.json"
-            metrics_path = train_output / "metrics.json"
-            probe = json.loads(probe_path.read_text()) if probe_path.exists() else None
-            metrics = json.loads(metrics_path.read_text()) if metrics_path.exists() else None
-            item["train"] = {
-                "command": command,
-                "exit_code": exit_code,
-                "duration_seconds": time.perf_counter() - phase_started,
-                "probe": probe,
-                "metrics": metrics,
-            }
-            write_json_atomic(run / "report.json", report)
-            if not valid_phase(exit_code, probe, metrics, "training_stability_tested"):
-                raise RuntimeError(f"seed {seed} training phase failed")
+            segment_records = []
+            update_outputs = {}
+            for start_update, stop_update in curve.segment_ranges():
+                segmented = curve.updates_per_segment is not None
+                train_output = (
+                    seed_directory / f"train-segment-{start_update:04d}-{stop_update:04d}"
+                    if segmented
+                    else seed_directory / "train"
+                )
+                command = _command(
+                    docker,
+                    run=run,
+                    seed_directory=seed_directory,
+                    output_directory=train_output,
+                    image_id=build["image_id"],
+                    gpu=args.gpu,
+                    num_envs=resolved["rollout"]["num_envs"],
+                    source_identity=source_identity,
+                    scenario="stability",
+                    training_start_update=start_update if segmented else None,
+                    training_stop_update=stop_update if segmented else None,
+                )
+                active_container = command[command.index("--name") + 1]
+                phase_started = time.perf_counter()
+                exit_code = execute(command, train_output / "console.log", args.timeout)
+                probe_path = train_output / "probe-result.json"
+                metrics_path = train_output / "metrics.json"
+                probe = json.loads(probe_path.read_text()) if probe_path.exists() else None
+                metrics = json.loads(metrics_path.read_text()) if metrics_path.exists() else None
+                segment = {
+                    "start_update": start_update,
+                    "stop_update": stop_update,
+                    "container_name": active_container,
+                    "command": command,
+                    "exit_code": exit_code,
+                    "duration_seconds": time.perf_counter() - phase_started,
+                    "probe": probe,
+                    "metrics": metrics,
+                }
+                segment_records.append(segment)
+                item["train"] = {"segments": segment_records}
+                write_json_atomic(run / "report.json", report)
+                if not valid_phase(exit_code, probe, metrics, "training_stability_tested"):
+                    raise RuntimeError(
+                        f"seed {seed} training segment {start_update}:{stop_update} failed"
+                    )
+                for update in range(start_update + 1, stop_update + 1):
+                    update_outputs[update] = train_output
+                active_container = None
+
+            combined_metrics = combine_segment_metrics(segment_records, curve)
+            if len(segment_records) == 1:
+                item["train"] = {
+                    **segment_records[0],
+                    "segments": segment_records,
+                    "metrics": combined_metrics,
+                }
+            else:
+                item["train"] = {
+                    "segments": segment_records,
+                    "duration_seconds": sum(
+                        segment["duration_seconds"] for segment in segment_records
+                    ),
+                    "metrics": combined_metrics,
+                }
+            if combined_metrics["status"] != "passed":
+                raise RuntimeError(f"seed {seed} segmented training audit failed")
+
             normalization = resolved["critic_normalization"]
-            warmup_paths = list(train_output.glob("update-*/normalization-warmup.csv"))
+            warmup_paths = [
+                path
+                for segment in segment_records
+                for path in (
+                    seed_directory
+                    / (
+                        f"train-segment-{segment['start_update']:04d}-{segment['stop_update']:04d}"
+                        if curve.updates_per_segment is not None
+                        else "train"
+                    )
+                ).glob("update-*/normalization-warmup.csv")
+            ]
             warmup_valid = len(warmup_paths) == int(normalization["enabled"]) and (
                 not normalization["enabled"]
                 or valid_normalization_warmup_csv(
@@ -476,7 +627,7 @@ def run_main(argv=None) -> int:
             )
             distribution_valid = all(
                 read_valid_critic_distribution(
-                    train_output / f"update-{update:04d}" / "critic-distribution.csv",
+                    update_outputs[update] / f"update-{update:04d}" / "critic-distribution.csv",
                     update=update,
                     scalar_count=expected_scalars,
                     enabled=normalization["enabled"],
@@ -489,7 +640,6 @@ def run_main(argv=None) -> int:
             write_json_atomic(run / "report.json", report)
             if not distribution_valid:
                 raise RuntimeError(f"seed {seed} critic distribution audit failed")
-            active_container = None
 
             for milestone in curve.evaluation_milestones:
                 evaluation_output = seed_directory / f"evaluation-update-{milestone:04d}"

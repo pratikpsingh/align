@@ -22,10 +22,12 @@ class LearningCurveConfig:
     max_post_update_value_clip_fraction: float
     max_actor_gradient_norm_before_clip: float
     max_critic_gradient_norm_before_clip: float
+    updates_per_segment: int | None = None
+    planned_restart_after_segment: int | None = None
 
     def __post_init__(self) -> None:
-        if self.schema_version != 1:
-            raise ValueError("schema_version must be 1")
+        if self.schema_version not in (1, 2):
+            raise ValueError("schema_version must be 1 or 2")
         if len(self.policy_seeds) < 2 or len(set(self.policy_seeds)) != len(self.policy_seeds):
             raise ValueError("policy_seeds must contain at least two unique seeds")
         if any(type(seed) is not int or seed < 0 for seed in self.policy_seeds):
@@ -62,10 +64,34 @@ class LearningCurveConfig:
         ):
             if getattr(self, name) > 1:
                 raise ValueError(f"{name} cannot exceed one")
+        if self.schema_version == 1:
+            if (
+                self.updates_per_segment is not None
+                or self.planned_restart_after_segment is not None
+            ):
+                raise ValueError("schema 1 does not declare segmented execution")
+        else:
+            if (
+                type(self.updates_per_segment) is not int
+                or self.updates_per_segment <= 0
+                or self.updates_per_segment >= self.updates_per_seed
+            ):
+                raise ValueError(
+                    "updates_per_segment must be a positive integer smaller than updates_per_seed"
+                )
+            segment_count = len(self.segment_ranges())
+            if (
+                type(self.planned_restart_after_segment) is not int
+                or not 1 <= self.planned_restart_after_segment < segment_count
+            ):
+                raise ValueError("planned_restart_after_segment must identify a non-final segment")
 
     @classmethod
     def from_dict(cls, values: dict) -> LearningCurveConfig:
+        optional = {"updates_per_segment", "planned_restart_after_segment"}
         expected = {field.name for field in fields(cls)}
+        if values.get("schema_version") == 1:
+            expected -= optional
         missing = expected - set(values)
         unknown = set(values) - expected
         if missing or unknown:
@@ -85,6 +111,15 @@ class LearningCurveConfig:
             }
         )
 
+    def segment_ranges(self) -> tuple[tuple[int, int], ...]:
+        """Return half-open completed-update ranges for fresh simulator processes."""
+        if self.updates_per_segment is None:
+            return ((0, self.updates_per_seed),)
+        return tuple(
+            (start, min(start + self.updates_per_segment, self.updates_per_seed))
+            for start in range(0, self.updates_per_seed, self.updates_per_segment)
+        )
+
     def to_stability_config(self) -> StabilityConfig:
         """Build the simulator-facing training and diagnostic configuration."""
         return StabilityConfig(
@@ -100,7 +135,7 @@ class LearningCurveConfig:
         )
 
     def to_dict(self) -> dict:
-        return {
+        values = {
             field.name: (
                 list(getattr(self, field.name))
                 if field.name in {"policy_seeds", "evaluation_milestones"}
@@ -108,3 +143,7 @@ class LearningCurveConfig:
             )
             for field in fields(self)
         }
+        if self.schema_version == 1:
+            values.pop("updates_per_segment")
+            values.pop("planned_restart_after_segment")
+        return values

@@ -63,6 +63,8 @@ Dependencies: learner state definitions. Develop this alongside the learner, bef
 - [ ] Separate resume, policy warm start, evaluation, rendering, and reporting.
 - [ ] Test interruption, partial writes, corrupt latest checkpoints, repeated restarts, and counter/plot consistency.
   - [x] Host tests cover abrupt subprocess exit, partial and failed writes, malformed pre-publication payloads, corrupt newest fallback, and configuration mismatch. The CUDA probe matched the exact next update, advanced counters once, and loaded the fallback in a fresh process. Task-connected attempt metrics and plot supersession remain pending.
+  - [x] Split a declared learning budget into fresh simulator processes at committed update boundaries. Run `20260917T144058.713679IST-643868db` passed 24 total updates across six training processes with exact ranges, checkpoint ID/hash continuity, frozen normalization continuity, one warmup per seed, and exact counters.
+  - [ ] Recover an incomplete multi-segment host run into a separate immutable run and fault-inject a live mid-rollout interruption.
 - [ ] Produce a report from an interrupted-and-resumed example and explain any lost rollout progress.
   - [x] The synthetic recovery report explicitly discards partial rollout and recurrent state. A bounded live two-process run then restored update 1 in a new Isaac Sim process, labeled four unfinished environment episodes as abandoned, restarted recurrent memory, and committed update 2. A fault-injected interruption during live collection remains pending.
 

@@ -1,0 +1,15 @@
+sudo -v
+
+uv run --locked python scripts/build_omnidrones_runtime.py \
+  --prepared-run runs/runtime-build/20260917T143840.748172IST-1c1975fc && \
+uv run --locked python scripts/run_segmented_learning.py \
+  --build-report runs/runtime-build/20260917T143840.748172IST-1c1975fc/report.json \
+  --critic-normalization-config configs/critic-normalization-active-groups-floor.json \
+  --accept-eula \
+  --gpu 0
+[sudo] password for pratiksingh: 
+Build artifacts: /home/pratiksingh/WorkSpace/JRF/align/runs/runtime-build/20260917T143840.748172IST-1c1975fc
+2026-09-17T14:40:58.613833+05:30 IST built: /home/pratiksingh/WorkSpace/JRF/align/runs/runtime-build/20260917T143840.748172IST-1c1975fc
+2026-09-17T14:40:58.721038+05:30 IST Run: /home/pratiksingh/WorkSpace/JRF/align/runs/segmented-learning/20260917T144058.713679IST-643868db
+Follow each seed's train*/console.log and evaluation-update-*/console.log files.
+2026-09-17T15:00:09.458458+05:30 IST passed: /home/pratiksingh/WorkSpace/JRF/align/runs/segmented-learning/20260917T144058.713679IST-643868db

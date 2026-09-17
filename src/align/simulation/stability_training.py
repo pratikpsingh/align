@@ -56,21 +56,30 @@ def run_stability_training(
     critic_normalization_config: CriticNormalizationConfig,
     stability_config: StabilityConfig,
     event,
+    start_update: int = 0,
+    stop_update: int | None = None,
 ) -> dict:
-    """Collect several independent full-horizon batches for one configured seed."""
+    """Collect a contiguous update range for one configured seed."""
     if training_config.attempts != stability_config.updates_per_seed:
         raise ValueError("training attempts must equal stability updates_per_seed")
     if training_config.policy_seed not in stability_config.policy_seeds:
         raise ValueError("training policy_seed is not in stability policy_seeds")
+    stop_update = stability_config.updates_per_seed if stop_update is None else stop_update
+    if (
+        type(start_update) is not int
+        or type(stop_update) is not int
+        or not 0 <= start_update < stop_update <= stability_config.updates_per_seed
+    ):
+        raise ValueError("update range must satisfy 0 <= start < stop <= updates_per_seed")
 
     attempts = []
     all_mask = torch.ones(env.num_envs, dtype=torch.bool, device=env.device)
     next_initial = initial
-    for number in range(1, stability_config.updates_per_seed + 1):
+    for number in range(start_update + 1, stop_update + 1):
         attempt_id = f"update-{number:04d}"
         attempt_output = output / attempt_id
         attempt_output.mkdir()
-        if number > 1:
+        if number > start_update + 1:
             next_initial = env.reset_mask(all_mask)
         event(
             "stability_update_started",
@@ -111,10 +120,12 @@ def run_stability_training(
         )
 
     final = attempts[-1]
-    expected_environment = (
-        stability_config.updates_per_seed * rollout_config.horizon * rollout_config.num_envs
-    )
+    expected_environment = stop_update * rollout_config.horizon * rollout_config.num_envs
     expected_agents = expected_environment * rollout_config.num_agents
+    segment_environment = (
+        (stop_update - start_update) * rollout_config.horizon * rollout_config.num_envs
+    )
+    segment_agents = segment_environment * rollout_config.num_agents
     checkpoint_manifests = list(checkpoint_directory.glob("checkpoint-*.json"))
     diagnostic_values = [
         value
@@ -137,21 +148,22 @@ def run_stability_training(
     checks = {
         "all_updates_passed": all(item["status"] == "passed" for item in attempts),
         "checkpoint_lineage_is_contiguous": lineage_is_contiguous,
-        "update_count_is_exact": len(attempts) == stability_config.updates_per_seed,
+        "update_count_is_exact": len(attempts) == stop_update - start_update,
+        "segment_start_counter_is_exact": attempts[0]["start_counters"]["completed_updates"]
+        == start_update,
         "completed_update_counter_is_exact": final["end_counters"]["completed_updates"]
-        == stability_config.updates_per_seed,
+        == stop_update,
         "environment_transition_counter_is_exact": final["end_counters"]["environment_transitions"]
         == expected_environment,
         "agent_transition_counter_is_exact": final["end_counters"]["agent_transitions"]
         == expected_agents,
-        "checkpoint_count_is_exact": len(checkpoint_manifests)
-        == stability_config.updates_per_seed + 1,
+        "checkpoint_count_is_exact": len(checkpoint_manifests) == stop_update + 1,
         "diagnostics_are_finite": all(math.isfinite(value) for value in diagnostic_values),
         "rollout_budget_reaches_configured_formation_phase": rollout_config.horizon
         > env.construction_cfg.ground_steps + env.construction_cfg.takeoff_steps,
         "normalization_warmup_occurs_only_before_first_update": (
             sum(item["critic_normalization_warmup"]["performed"] for item in attempts)
-            == int(critic_normalization_config.enabled)
+            == int(critic_normalization_config.enabled and start_update == 0)
         ),
         "normalization_state_is_identical_across_updates": all(
             item["critic_normalization"] == attempts[0]["critic_normalization"] for item in attempts
@@ -166,10 +178,14 @@ def run_stability_training(
         "status": "passed" if all(checks.values()) else "failed",
         "checks": checks,
         "policy_seed": training_config.policy_seed,
-        "updates": stability_config.updates_per_seed,
+        "segment_start_update": start_update,
+        "segment_stop_update": stop_update,
+        "updates": stop_update - start_update,
         "rollout_horizon": rollout_config.horizon,
         "environment_transitions": expected_environment,
         "agent_transitions": expected_agents,
+        "segment_environment_transitions": segment_environment,
+        "segment_agent_transitions": segment_agents,
         "critic_normalization": final["critic_normalization"],
         "critic_normalization_warmup_environment_transitions": sum(
             item["critic_normalization_warmup"]["environment_transitions"] for item in attempts
@@ -182,7 +198,9 @@ def run_stability_training(
         ),
         "final_counters": final["end_counters"],
         "initial_checkpoint_id": attempts[0]["start_checkpoint_id"],
+        "initial_checkpoint_sha256": attempts[0]["checkpoint_parent_sha256"],
         "final_checkpoint_id": final["committed_checkpoint_id"],
+        "final_checkpoint_sha256": final["committed_checkpoint_sha256"],
         "guidance_is_acceptance_gate": False,
         "guidance": [item["stability_guidance"] for item in attempts],
         "measurements": [

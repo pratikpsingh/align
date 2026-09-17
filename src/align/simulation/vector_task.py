@@ -248,6 +248,8 @@ def run(
     source_identity: str | None = None,
     runtime_identity: str | None = None,
     evaluation_update: int | None = None,
+    training_start_update: int = 0,
+    training_stop_update: int | None = None,
 ):
     started = time.perf_counter()
     (
@@ -292,6 +294,8 @@ def run(
         scenario != "evaluation" or type(evaluation_update) is not int or evaluation_update < 0
     ):
         raise ValueError("evaluation_update must be a nonnegative integer used only for evaluation")
+    if scenario != "stability" and (training_start_update != 0 or training_stop_update is not None):
+        raise ValueError("training update ranges are valid only for stability")
     if scenario in ("training", "stability", "evaluation", "critic-calibration") and any(
         value is None
         for value in (
@@ -1051,6 +1055,8 @@ def run(
                 critic_normalization_config=critic_normalization,
                 stability_config=stability,
                 event=event,
+                start_update=training_start_update,
+                stop_update=training_stop_update,
             )
             save_json(output / "metrics.json", metrics)
             result.update(
@@ -1059,7 +1065,7 @@ def run(
                 vector_task_physics_tested=True,
                 training_stability_tested=True,
                 optimizer_updates=metrics["updates"],
-                agent_steps=metrics["agent_transitions"],
+                agent_steps=metrics["segment_agent_transitions"],
                 torch_peak_allocated_bytes=torch.cuda.max_memory_allocated(),
             )
             event("stability_training_finished", status=result["status"], checks=metrics["checks"])
@@ -1467,6 +1473,8 @@ def main(argv=None):
     parser.add_argument("--attempt-id")
     parser.add_argument("--checkpoint-directory", type=Path)
     parser.add_argument("--evaluation-update", type=int)
+    parser.add_argument("--training-start-update", type=int, default=0)
+    parser.add_argument("--training-stop-update", type=int)
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--source-identity")
     parser.add_argument("--runtime-identity")
@@ -1484,6 +1492,8 @@ def main(argv=None):
         source_identity=args.source_identity,
         runtime_identity=args.runtime_identity,
         evaluation_update=args.evaluation_update,
+        training_start_update=args.training_start_update,
+        training_stop_update=args.training_stop_update,
     )
 
 

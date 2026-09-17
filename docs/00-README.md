@@ -29,5 +29,6 @@ Start here, then follow the numbered files in order. The prefixes describe readi
 23. [Frozen active-group critic normalization](23-frozen-critic-normalization.md): warmup statistics, active-slot transforms, checkpoint recovery, evaluation, and acceptance.
 24. [Critic distribution drift](24-critic-distribution-drift.md): per-update clipping and scale drift, host-audited tables, and the normalized learning-curve command.
 25. [Critic normalization denominator floor](25-critic-normalization-floor.md): historical candidate calibration, schema-2 transform, compatibility, and GPU acceptance.
+26. [Segmented training](26-segmented-training.md): fresh-process update ranges, exact checkpoint lineage, normalization continuity, and bounded acceptance.
 
 For beginner explanations, begin with the [learning index](../learning/00-README.md). For research scope and intended implementation, use the [planning index](../plans/00-README.md). Setup instructions distinguish CPU contracts, implemented simulator behavior, and pending research validation.

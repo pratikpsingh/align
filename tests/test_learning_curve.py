@@ -8,6 +8,8 @@ from tempfile import TemporaryDirectory
 
 from align.learning.learning_curve_config import LearningCurveConfig
 from align.runtime.learning_curve_runtime import (
+    _command,
+    combine_segment_metrics,
     summarize_learning_curve,
     write_learning_curve_tables,
 )
@@ -27,6 +29,26 @@ class LearningCurveConfigTests(unittest.TestCase):
         self.assertEqual(stability.policy_seeds, (41, 73))
         self.assertEqual(stability.evaluation_steps, 800)
         self.assertNotIn("torch", sys.modules)
+
+    def test_segmented_config_declares_exact_process_ranges(self):
+        values = json.loads((self.root / "configs/learning-curve-segmented.json").read_text())
+        config = LearningCurveConfig.from_dict(values)
+        self.assertEqual(config.to_dict(), values)
+        self.assertEqual(config.segment_ranges(), ((0, 4), (4, 8), (8, 12)))
+        self.assertEqual(config.planned_restart_after_segment, 1)
+
+    def test_invalid_segment_contracts_are_rejected(self):
+        values = json.loads((self.root / "configs/learning-curve-segmented.json").read_text())
+        for changed in (
+            {**values, "updates_per_segment": 0},
+            {**values, "updates_per_segment": 12},
+            {**values, "planned_restart_after_segment": 0},
+            {**values, "planned_restart_after_segment": 3},
+            {key: value for key, value in values.items() if key != "updates_per_segment"},
+        ):
+            with self.subTest(changed=changed):
+                with self.assertRaises(ValueError):
+                    LearningCurveConfig.from_dict(changed)
 
     def test_invalid_budgets_milestones_and_keys_are_rejected(self):
         cases = (
@@ -159,6 +181,82 @@ class LearningCurveSummaryTests(unittest.TestCase):
         items[1]["evaluations"].pop()
         with self.assertRaisesRegex(ValueError, "exactly one evaluation"):
             summarize_learning_curve(items, self.config)
+
+
+class SegmentedLearningTests(unittest.TestCase):
+    def setUp(self):
+        root = Path(__file__).resolve().parents[1]
+        self.config = LearningCurveConfig.from_dict(
+            json.loads((root / "configs/learning-curve-segmented.json").read_text())
+        )
+
+    @staticmethod
+    def _segment(start, stop):
+        measurements = [{"completed_update": update} for update in range(start + 1, stop + 1)]
+        return {
+            "start_update": start,
+            "stop_update": stop,
+            "container_name": f"segment-{start}-{stop}",
+            "exit_code": 0,
+            "metrics": {
+                "status": "passed",
+                "policy_seed": 41,
+                "segment_start_update": start,
+                "segment_stop_update": stop,
+                "initial_checkpoint_id": f"checkpoint-{start}",
+                "initial_checkpoint_sha256": f"sha-{start}",
+                "final_checkpoint_id": f"checkpoint-{stop}",
+                "final_checkpoint_sha256": f"sha-{stop}",
+                "final_counters": {"completed_updates": stop},
+                "critic_normalization": {"enabled": True, "frozen": True},
+                "critic_normalization_warmup_environment_transitions": 3072 if start == 0 else 0,
+                "critic_normalization_warmup_agent_transitions": 12288 if start == 0 else 0,
+                "critic_normalization_warmup_seconds": 1.5 if start == 0 else 0.0,
+                "measurements": measurements,
+            },
+        }
+
+    def test_segment_aggregation_requires_contiguous_restored_lineage(self):
+        segments = [self._segment(start, stop) for start, stop in self.config.segment_ranges()]
+        combined = combine_segment_metrics(segments, self.config)
+        self.assertEqual(combined["status"], "passed")
+        self.assertEqual(combined["segment_count"], 3)
+        self.assertEqual(combined["final_counters"]["completed_updates"], 12)
+        self.assertEqual(
+            [row["completed_update"] for row in combined["measurements"]],
+            list(range(1, 13)),
+        )
+        self.assertTrue(all(combined["checks"].values()))
+
+        segments[1]["metrics"]["initial_checkpoint_sha256"] = "wrong"
+        broken = combine_segment_metrics(segments, self.config)
+        self.assertEqual(broken["status"], "failed")
+        self.assertFalse(broken["checks"]["checkpoint_lineage_is_contiguous_across_processes"])
+
+    def test_segment_command_carries_range_without_changing_config(self):
+        with TemporaryDirectory() as directory:
+            run = Path(directory)
+            seed = run / "seed-0000000041"
+            output = seed / "train-segment-0004-0008"
+            output.mkdir(parents=True)
+            command = _command(
+                ["docker"],
+                run=run,
+                seed_directory=seed,
+                output_directory=output,
+                image_id="sha256:test",
+                gpu=0,
+                num_envs=4,
+                source_identity="source",
+                scenario="stability",
+                training_start_update=4,
+                training_stop_update=8,
+            )
+        self.assertEqual(
+            command[command.index("--training-start-update") + 1 :],
+            ["4", "--training-stop-update", "8"],
+        )
+        self.assertIn("segment-0004-0008", command[command.index("--name") + 1])
 
 
 if __name__ == "__main__":
