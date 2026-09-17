@@ -223,3 +223,74 @@ class FrozenCriticGroupNormalizer:
         if not torch.equal(result[..., capacity * 9 :], states[..., capacity * 9 :]):
             raise ValueError("critic normalization changed mask features")
         return result
+
+
+def summarize_critic_rollout_distribution(
+    raw_states: torch.Tensor,
+    normalized_states: torch.Tensor,
+    normalization: dict,
+    observation: ObservationConfig,
+    expected_agents: int,
+) -> list[dict]:
+    """Measure active-group drift and pre-clamp exceedances on one PPO rollout."""
+    if raw_states.ndim != 3 or raw_states.shape != normalized_states.shape:
+        raise ValueError("raw and normalized critic rollouts must have the same [T, E, D] shape")
+    if raw_states.shape[-1] != observation.critic_dimension:
+        raise ValueError("critic rollout feature dimension differs from observation config")
+    normalizer = FrozenCriticGroupNormalizer(normalization, observation)
+    expected = normalizer.apply(raw_states)
+    if not torch.equal(expected, normalized_states):
+        raise ValueError("stored critic rollout differs from the frozen normalization contract")
+    flat = raw_states.reshape(-1, observation.critic_dimension)
+    validator = CriticGroupAccumulator(observation, expected_agents, flat.device)
+    features, active = validator._parts(flat)
+    rows = []
+    for name, group_slice in GROUP_SLICES.items():
+        values = features[..., group_slice][active].to(torch.float64).reshape(-1)
+        if values.numel() != raw_states.shape[0] * raw_states.shape[1] * expected_agents * 3:
+            raise ValueError("critic rollout active scalar count is inconsistent")
+        mean = float(values.mean().item())
+        standard_deviation = float(values.std(unbiased=False).item())
+        if normalization["enabled"]:
+            moments = normalization["groups"][name]
+            warmup_std = math.sqrt(max(moments["variance"], normalization["epsilon"] ** 2))
+            before_clip = (values - moments["mean"]) / warmup_std
+            clipped = before_clip.abs() > normalization["clip"]
+            warmup_mean = moments["mean"]
+            mean_shift = (mean - warmup_mean) / warmup_std
+            std_ratio = standard_deviation / warmup_std
+        else:
+            before_clip = values
+            clipped = torch.zeros_like(values, dtype=torch.bool)
+            warmup_mean = 0.0
+            warmup_std = 1.0
+            mean_shift = 0.0
+            std_ratio = 1.0
+        transformed = (
+            before_clip.clamp(-normalization["clip"], normalization["clip"])
+            if normalization["enabled"]
+            else before_clip
+        )
+        clipped_count = int(clipped.sum().item())
+        row = {
+            "group": name,
+            "count": values.numel(),
+            "raw_mean": mean,
+            "raw_standard_deviation": standard_deviation,
+            "raw_minimum": float(values.min().item()),
+            "raw_maximum": float(values.max().item()),
+            "warmup_mean": warmup_mean,
+            "warmup_standard_deviation": warmup_std,
+            "mean_shift_warmup_standard_deviations": mean_shift,
+            "raw_standard_deviation_ratio": std_ratio,
+            "normalized_mean": float(transformed.mean().item()),
+            "normalized_standard_deviation": float(transformed.std(unbiased=False).item()),
+            "normalized_minimum": float(transformed.min().item()),
+            "normalized_maximum": float(transformed.max().item()),
+            "clipped_count": clipped_count,
+            "clipped_fraction": clipped_count / values.numel(),
+        }
+        if not all(math.isfinite(value) for key, value in row.items() if key != "group"):
+            raise ValueError("critic rollout distribution contains nonfinite statistics")
+        rows.append(row)
+    return rows

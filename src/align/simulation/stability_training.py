@@ -156,6 +156,11 @@ def run_stability_training(
         "normalization_state_is_identical_across_updates": all(
             item["critic_normalization"] == attempts[0]["critic_normalization"] for item in attempts
         ),
+        "critic_distribution_has_three_groups_per_update": all(
+            {row["group"] for row in item["critic_distribution"]}
+            == {"position", "velocity", "target"}
+            for item in attempts
+        ),
     }
     return {
         "status": "passed" if all(checks.values()) else "failed",
@@ -183,6 +188,7 @@ def run_stability_training(
         "measurements": [
             {
                 "completed_update": item["end_counters"]["completed_updates"],
+                "critic_distribution": item["critic_distribution"],
                 **item["measurements"],
                 **{f"post_{key}": value for key, value in item["post_update"].items()},
                 "max_actor_gradient_norm_before_clip": max(

@@ -13,6 +13,7 @@ import time
 from pathlib import Path
 
 from align.artifacts import create_run_directory, write_json_atomic
+from align.learning.critic_distribution_schema import read_valid_critic_distribution
 from align.learning.stability_config import StabilityConfig
 from align.learning.training_config import TaskTrainingConfig
 from align.runtime.diagnostics import probe_source, probe_system
@@ -344,6 +345,30 @@ def run_main(argv=None) -> int:
                     write_json_atomic(run / "report.json", report)
                     if not warmup_valid:
                         raise RuntimeError(f"seed {seed} normalization warmup audit failed")
+                    expected_scalars = (
+                        resolved["rollout"]["horizon"]
+                        * resolved["rollout"]["num_envs"]
+                        * resolved["rollout"]["num_agents"]
+                        * 3
+                    )
+                    distribution_valid = all(
+                        read_valid_critic_distribution(
+                            seed_directory
+                            / "train"
+                            / f"update-{update:04d}"
+                            / "critic-distribution.csv",
+                            update=update,
+                            scalar_count=expected_scalars,
+                            enabled=normalization["enabled"],
+                            clip=normalization["clip"],
+                        )
+                        is not None
+                        for update in range(1, stability.updates_per_seed + 1)
+                    )
+                    phase_result["critic_distribution_csv_valid"] = distribution_valid
+                    write_json_atomic(run / "report.json", report)
+                    if not distribution_valid:
+                        raise RuntimeError(f"seed {seed} critic distribution audit failed")
                 active_container = None
             write_json_atomic(run / "report.json", report)
 

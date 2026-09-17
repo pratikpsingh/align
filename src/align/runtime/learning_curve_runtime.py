@@ -12,6 +12,7 @@ import time
 from pathlib import Path
 
 from align.artifacts import create_run_directory, write_json_atomic
+from align.learning.critic_distribution_schema import read_valid_critic_distribution
 from align.learning.learning_curve_config import LearningCurveConfig
 from align.learning.training_config import TaskTrainingConfig
 from align.runtime.diagnostics import probe_source, probe_system
@@ -25,7 +26,11 @@ from align.runtime.drone_runtime import (
     new_report,
     project_root,
 )
-from align.runtime.stability_runtime import valid_phase, validate_stability_resolved_config
+from align.runtime.stability_runtime import (
+    valid_normalization_warmup_csv,
+    valid_phase,
+    validate_stability_resolved_config,
+)
 from align.runtime.training_runtime import _load, load_resolved_config
 
 
@@ -105,6 +110,36 @@ def summarize_learning_curve(items: list[dict], config: LearningCurveConfig) -> 
     if len(set(all_checkpoint_ids)) != len(all_checkpoint_ids):
         raise ValueError("checkpoint evaluations must load distinct per-seed milestones")
 
+    distribution_presence = ["critic_distribution" in row for row in training_rows]
+    if any(distribution_presence) and not all(distribution_presence):
+        raise ValueError("critic distribution measurements are missing from some updates")
+    distribution_trends = []
+    if all(distribution_presence):
+        for update in range(1, config.updates_per_seed + 1):
+            rows = [row for row in training_rows if row["completed_update"] == update]
+            for group in ("position", "velocity", "target"):
+                group_rows = []
+                for row in rows:
+                    matches = [
+                        item for item in row["critic_distribution"] if item["group"] == group
+                    ]
+                    if len(matches) != 1:
+                        raise ValueError(f"update {update} lacks exactly one {group} group")
+                    group_rows.append(matches[0])
+                distribution_trends.append(
+                    {
+                        "completed_update": update,
+                        "group": group,
+                        "clipped_fraction": _bounds(group_rows, "clipped_fraction"),
+                        "mean_shift_warmup_standard_deviations": _bounds(
+                            group_rows, "mean_shift_warmup_standard_deviations"
+                        ),
+                        "raw_standard_deviation_ratio": _bounds(
+                            group_rows, "raw_standard_deviation_ratio"
+                        ),
+                    }
+                )
+
     return {
         "seed_count": len(items),
         "seeds": [item["policy_seed"] for item in items],
@@ -121,6 +156,7 @@ def summarize_learning_curve(items: list[dict], config: LearningCurveConfig) -> 
             training_rows, "max_critic_gradient_norm_before_clip"
         ),
         "training_trends": training_trends,
+        "critic_distribution_trends": distribution_trends,
         "evaluation_trends": trends,
     }
 
@@ -154,6 +190,29 @@ def write_learning_curve_tables(run: Path, summary: dict) -> None:
                     writer.writerow(
                         {
                             "completed_update": row["completed_update"],
+                            "metric": metric,
+                            **row[metric],
+                        }
+                    )
+    if summary["critic_distribution_trends"]:
+        with (run / "critic-distribution-curve.csv").open(
+            "x", newline="", encoding="utf-8"
+        ) as stream:
+            writer = csv.DictWriter(
+                stream,
+                fieldnames=("completed_update", "group", "metric", "minimum", "maximum", "mean"),
+            )
+            writer.writeheader()
+            for row in summary["critic_distribution_trends"]:
+                for metric in (
+                    "clipped_fraction",
+                    "mean_shift_warmup_standard_deviations",
+                    "raw_standard_deviation_ratio",
+                ):
+                    writer.writerow(
+                        {
+                            "completed_update": row["completed_update"],
+                            "group": row["group"],
                             "metric": metric,
                             **row[metric],
                         }
@@ -371,6 +430,42 @@ def run_main(argv=None) -> int:
             write_json_atomic(run / "report.json", report)
             if not valid_phase(exit_code, probe, metrics, "training_stability_tested"):
                 raise RuntimeError(f"seed {seed} training phase failed")
+            normalization = resolved["critic_normalization"]
+            warmup_paths = list(train_output.glob("update-*/normalization-warmup.csv"))
+            warmup_valid = len(warmup_paths) == int(normalization["enabled"]) and (
+                not normalization["enabled"]
+                or valid_normalization_warmup_csv(
+                    warmup_paths[0],
+                    warmup_steps=normalization["warmup_steps"],
+                    num_envs=resolved["rollout"]["num_envs"],
+                    num_agents=resolved["rollout"]["num_agents"],
+                )
+            )
+            item["train"]["normalization_warmup_csv_valid"] = warmup_valid
+            write_json_atomic(run / "report.json", report)
+            if not warmup_valid:
+                raise RuntimeError(f"seed {seed} normalization warmup audit failed")
+            expected_scalars = (
+                resolved["rollout"]["horizon"]
+                * resolved["rollout"]["num_envs"]
+                * resolved["rollout"]["num_agents"]
+                * 3
+            )
+            distribution_valid = all(
+                read_valid_critic_distribution(
+                    train_output / f"update-{update:04d}" / "critic-distribution.csv",
+                    update=update,
+                    scalar_count=expected_scalars,
+                    enabled=normalization["enabled"],
+                    clip=normalization["clip"],
+                )
+                is not None
+                for update in range(1, curve.updates_per_seed + 1)
+            )
+            item["train"]["critic_distribution_csv_valid"] = distribution_valid
+            write_json_atomic(run / "report.json", report)
+            if not distribution_valid:
+                raise RuntimeError(f"seed {seed} critic distribution audit failed")
             active_container = None
 
             for milestone in curve.evaluation_milestones:

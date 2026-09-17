@@ -19,6 +19,7 @@ from align.learning.torch_normalization import (
     FrozenCriticGroupNormalizer,
     disabled_normalization_state,
     normalization_matches_config,
+    summarize_critic_rollout_distribution,
 )
 from align.learning.torch_ppo import evaluate_ppo_diagnostics, update_recurrent_ppo
 from align.learning.torch_recovery import (
@@ -398,7 +399,15 @@ def run_training_attempt(
         and (critic_memory.cell == 0).all()
     )
     current_observation = initial[("agents", "observation")].clone()
-    current_state = normalizer.apply(initial[("agents", "state")])
+    current_raw_state = initial[("agents", "state")].clone()
+    current_state = normalizer.apply(current_raw_state)
+    raw_critic_states = torch.empty(
+        cfg.horizon,
+        cfg.num_envs,
+        cfg.critic_state_dim,
+        device=env.device,
+        dtype=current_raw_state.dtype,
+    )
     buffer = TorchRecurrentRollout(
         cfg,
         TorchRecurrentFrame(current_observation, current_state, actor_memory, critic_memory),
@@ -417,6 +426,7 @@ def run_training_attempt(
         writer.writeheader()
         for step in range(cfg.horizon):
             with torch.no_grad():
+                raw_critic_states[step].copy_(current_raw_state)
                 actor_result = actor.act(
                     current_observation.reshape(
                         cfg.num_envs * cfg.num_agents, 1, cfg.actor_observation_dim
@@ -437,7 +447,8 @@ def run_training_attempt(
                 values = critic_result.value[:, 0]
                 output_td = env.step_actions(actions)
                 final_observation = output_td[("agents", "observation")].clone()
-                final_state = normalizer.apply(output_td[("agents", "state")])
+                final_raw_state = output_td[("agents", "state")].clone()
+                final_state = normalizer.apply(final_raw_state)
                 terminated = output_td["terminated"].squeeze(-1).clone()
                 truncated = output_td["truncated"].squeeze(-1).clone()
                 done = terminated | truncated
@@ -487,9 +498,11 @@ def run_training_attempt(
                 if bool(done.any()):
                     reset_td = env.reset_mask(done)
                     current_observation = reset_td[("agents", "observation")].clone()
-                    current_state = normalizer.apply(reset_td[("agents", "state")])
+                    current_raw_state = reset_td[("agents", "state")].clone()
+                    current_state = normalizer.apply(current_raw_state)
                 else:
                     current_observation = final_observation
+                    current_raw_state = final_raw_state
                     current_state = final_state
                 buffer.append(
                     TorchRolloutTransition(
@@ -511,6 +524,18 @@ def run_training_attempt(
                 actor_memory = next_actor_memory
                 critic_memory = next_critic_memory
     collection_seconds = time.perf_counter() - collection_started
+    critic_distribution = summarize_critic_rollout_distribution(
+        raw_critic_states,
+        buffer.critic_states[:-1],
+        normalization,
+        env.observation_cfg,
+        cfg.num_agents,
+    )
+    with (output / "critic-distribution.csv").open("x", newline="", encoding="utf-8") as stream:
+        writer = csv.DictWriter(stream, fieldnames=("completed_update", *critic_distribution[0]))
+        writer.writeheader()
+        for row in critic_distribution:
+            writer.writerow({"completed_update": start_counters["completed_updates"] + 1, **row})
 
     advantages = buffer.compute_gae()
     chunks = buffer.sequence_chunks()
@@ -653,6 +678,19 @@ def run_training_attempt(
             normalization, critic_normalization_config
         ),
         "critic_normalization_is_frozen": normalization["frozen"],
+        "critic_distribution_has_exact_active_counts": (
+            len(critic_distribution) == 3
+            and all(
+                row["count"] == cfg.horizon * cfg.num_envs * cfg.num_agents * 3
+                for row in critic_distribution
+            )
+        ),
+        "critic_distribution_is_finite": all(
+            math.isfinite(value)
+            for row in critic_distribution
+            for key, value in row.items()
+            if key != "group"
+        ),
         "critic_normalization_warmup_contract_applied": (
             (
                 resume
@@ -695,6 +733,7 @@ def run_training_attempt(
         "episodes_completed_total": episode_count,
         "rollout_rows": raw_rows,
         "critic_normalization": normalization,
+        "critic_distribution": critic_distribution,
         "critic_normalization_warmup": warmup_metrics,
         "critic_normalization_warmup_environment_transitions": warmup_metrics[
             "environment_transitions"
