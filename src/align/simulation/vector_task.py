@@ -17,6 +17,7 @@ from pathlib import Path
 from align.artifacts import as_ist, utc_now, write_json_atomic
 from align.learning.collector_config import CollectorProbeConfig
 from align.learning.critic_calibration_config import CriticCalibrationConfig
+from align.learning.critic_normalization_config import CriticNormalizationConfig
 from align.learning.ppo_config import RecurrentPPOConfig
 from align.learning.recovery_config import RecoveryConfig
 from align.learning.rollout import RolloutConfig
@@ -89,14 +90,25 @@ def load_bundle(path):
     required = {"construction", "observation", "reward", "task"}
     collector_sections = {"policy", "rollout", "collector"}
     training_sections = {"policy", "rollout", "ppo", "recovery", "training"}
+    normalized_training_sections = training_sections | {"critic_normalization"}
     stability_sections = training_sections | {"stability"}
+    normalized_stability_sections = normalized_training_sections | {"stability"}
     critic_calibration_sections = training_sections | {"critic_calibration"}
+    normalized_critic_calibration_sections = normalized_training_sections | {"critic_calibration"}
     learner_sections = (
         training_sections,
+        normalized_training_sections,
         stability_sections,
+        normalized_stability_sections,
         critic_calibration_sections,
+        normalized_critic_calibration_sections,
     )
-    known = required | collector_sections | stability_sections | critic_calibration_sections
+    known = (
+        required
+        | collector_sections
+        | normalized_stability_sections
+        | normalized_critic_calibration_sections
+    )
     missing = required - set(values)
     unknown = set(values) - known
     supplied_optional = set(values) - required
@@ -140,13 +152,19 @@ def load_bundle(path):
     )
     stability = (
         StabilityConfig.from_dict(values["stability"])
-        if supplied_optional == stability_sections
+        if supplied_optional in (stability_sections, normalized_stability_sections)
         else None
     )
     critic_calibration = (
         CriticCalibrationConfig.from_dict(values["critic_calibration"])
-        if supplied_optional == critic_calibration_sections
+        if supplied_optional
+        in (critic_calibration_sections, normalized_critic_calibration_sections)
         else None
+    )
+    critic_normalization = (
+        CriticNormalizationConfig.from_dict(values["critic_normalization"])
+        if "critic_normalization" in supplied_optional
+        else CriticNormalizationConfig()
     )
     return (
         construction,
@@ -162,6 +180,7 @@ def load_bundle(path):
         values,
         stability,
         critic_calibration,
+        critic_normalization,
     )
 
 
@@ -245,6 +264,7 @@ def run(
         resolved_config,
         stability,
         critic_calibration,
+        critic_normalization,
     ) = load_bundle(config_path)
     if num_envs not in (1, task.num_envs):
         raise ValueError("num_envs must be one or the configured probe batch")
@@ -988,6 +1008,7 @@ def run(
                 ppo_config=ppo,
                 recovery_config=recovery,
                 training_config=training,
+                critic_normalization_config=critic_normalization,
                 event=event,
                 critic_calibration_config=critic_calibration,
             )
@@ -1027,6 +1048,7 @@ def run(
                 ppo_config=ppo,
                 recovery_config=recovery,
                 training_config=training,
+                critic_normalization_config=critic_normalization,
                 stability_config=stability,
                 event=event,
             )
@@ -1058,6 +1080,7 @@ def run(
                 ppo_config=ppo,
                 rollout_config=rollout,
                 training_config=training,
+                critic_normalization_config=critic_normalization,
                 stability_config=stability,
                 event=event,
                 checkpoint_update=evaluation_update,
@@ -1095,6 +1118,7 @@ def run(
                 ppo_config=ppo,
                 recovery_config=recovery,
                 training_config=training,
+                critic_normalization_config=critic_normalization,
                 event=event,
             )
             save_json(output / "metrics.json", metrics)

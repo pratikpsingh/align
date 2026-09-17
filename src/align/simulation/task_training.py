@@ -10,9 +10,16 @@ from pathlib import Path
 import torch
 
 from align.learning.checkpoint_store import CheckpointStore
+from align.learning.critic_normalization_config import CriticNormalizationConfig
 from align.learning.ppo_config import RecurrentPPOConfig
 from align.learning.recovery_config import RecoveryConfig
 from align.learning.rollout import RolloutConfig
+from align.learning.torch_normalization import (
+    CriticGroupAccumulator,
+    FrozenCriticGroupNormalizer,
+    disabled_normalization_state,
+    normalization_matches_config,
+)
 from align.learning.torch_ppo import evaluate_ppo_diagnostics, update_recurrent_ppo
 from align.learning.torch_recovery import (
     capture_learner_state,
@@ -53,6 +60,23 @@ ROLLOUT_COLUMNS = (
     "reason_code",
 )
 
+NORMALIZATION_WARMUP_COLUMNS = (
+    "warmup_step",
+    "position_count",
+    "position_sum",
+    "position_sum_squares",
+    "velocity_count",
+    "velocity_sum",
+    "velocity_sum_squares",
+    "target_count",
+    "target_sum",
+    "target_sum_squares",
+    "action_min",
+    "action_max",
+    "terminated_count",
+    "truncated_count",
+)
+
 
 def _optimizer(module, learning_rate: float, config: RecurrentPPOConfig):
     return torch.optim.Adam(module.parameters(), lr=learning_rate, eps=config.adam_epsilon)
@@ -91,14 +115,15 @@ def _save_checkpoint(
     )
 
 
-def _initial_state(actor, critic, actor_optimizer, critic_optimizer, resolved_config, ppo):
+def _initial_state(
+    actor, critic, actor_optimizer, critic_optimizer, resolved_config, ppo, normalization
+):
     counters = {
         "completed_updates": 0,
         "environment_transitions": 0,
         "agent_transitions": 0,
         "active_training_seconds": 0.0,
     }
-    normalization = {"enabled": False, "contract": "declared_feature_scaling"}
     schedules = {
         "learning_rate_fraction": 1.0,
         "entropy_coefficient": ppo.entropy_coefficient,
@@ -126,6 +151,109 @@ def _initial_state(actor, critic, actor_optimizer, critic_optimizer, resolved_co
     )
 
 
+def _collect_normalization_warmup(
+    *,
+    env,
+    initial,
+    actor,
+    output: Path,
+    rollout_config: RolloutConfig,
+    training_config: TaskTrainingConfig,
+    normalization_config: CriticNormalizationConfig,
+    event,
+):
+    """Collect no-gradient active-slot moments, freeze them, then reset the task."""
+    if not normalization_config.enabled:
+        return (
+            initial,
+            disabled_normalization_state(),
+            {
+                "performed": False,
+                "reused_from_checkpoint": False,
+                "warmup_steps": 0,
+                "environment_transitions": 0,
+                "agent_transitions": 0,
+                "episodes_completed": 0,
+                "seconds": 0.0,
+            },
+        )
+    cfg = rollout_config
+    accumulator = CriticGroupAccumulator(
+        env.observation_cfg, env.construction_cfg.num_agents, env.device
+    )
+    current_observation = initial[("agents", "observation")].clone()
+    current_state = initial[("agents", "state")].clone()
+    actor_memory = actor.backbone.recurrent.initial_state(
+        current_observation, cfg.num_envs * cfg.num_agents
+    )
+    episode_count = 0
+    started = time.perf_counter()
+    event(
+        "critic_normalization_warmup_started",
+        warmup_steps=normalization_config.warmup_steps,
+    )
+    with (output / "normalization-warmup.csv").open("x", newline="", encoding="utf-8") as stream:
+        writer = csv.DictWriter(stream, fieldnames=NORMALIZATION_WARMUP_COLUMNS)
+        writer.writeheader()
+        with torch.no_grad():
+            for step in range(normalization_config.warmup_steps):
+                reductions = accumulator.update(current_state)
+                result = actor.act(
+                    current_observation.reshape(
+                        cfg.num_envs * cfg.num_agents, 1, cfg.actor_observation_dim
+                    ),
+                    actor_memory,
+                    torch.ones(cfg.num_envs * cfg.num_agents, 1, device=env.device),
+                    deterministic=not training_config.stochastic_actions,
+                )
+                actions = result.action[:, 0].reshape(cfg.num_envs, cfg.num_agents, cfg.action_dim)
+                output_td = env.step_actions(actions)
+                terminated = output_td["terminated"].squeeze(-1).clone()
+                truncated = output_td["truncated"].squeeze(-1).clone()
+                done = terminated | truncated
+                row = {
+                    "warmup_step": step,
+                    "action_min": float(actions.min().item()),
+                    "action_max": float(actions.max().item()),
+                    "terminated_count": int(terminated.sum().item()),
+                    "truncated_count": int(truncated.sum().item()),
+                }
+                for name, values in reductions.items():
+                    row[f"{name}_count"] = values["count"]
+                    row[f"{name}_sum"] = values["sum"]
+                    row[f"{name}_sum_squares"] = values["sum_squares"]
+                writer.writerow(row)
+                stream.flush()
+                episode_count += int(done.sum().item())
+                actor_memory = zero_done_actor_memory(result.state, done, cfg)
+                if bool(done.any()):
+                    reset = env.reset_mask(done)
+                    current_observation = reset[("agents", "observation")].clone()
+                    current_state = reset[("agents", "state")].clone()
+                else:
+                    current_observation = output_td[("agents", "observation")].clone()
+                    current_state = output_td[("agents", "state")].clone()
+    normalization = accumulator.freeze(normalization_config, normalization_config.warmup_steps)
+    all_mask = torch.ones(env.num_envs, dtype=torch.bool, device=env.device)
+    fresh_initial = env.reset_mask(all_mask)
+    seconds = time.perf_counter() - started
+    metrics = {
+        "performed": True,
+        "reused_from_checkpoint": False,
+        "warmup_steps": normalization_config.warmup_steps,
+        "environment_transitions": normalization_config.warmup_steps * cfg.num_envs,
+        "agent_transitions": (normalization_config.warmup_steps * cfg.num_envs * cfg.num_agents),
+        "episodes_completed": episode_count,
+        "seconds": seconds,
+    }
+    event(
+        "critic_normalization_warmup_finished",
+        environment_transitions=metrics["environment_transitions"],
+        groups=normalization["groups"],
+    )
+    return fresh_initial, normalization, metrics
+
+
 def run_training_attempt(
     *,
     env,
@@ -144,6 +272,7 @@ def run_training_attempt(
     ppo_config: RecurrentPPOConfig,
     recovery_config: RecoveryConfig,
     training_config: TaskTrainingConfig,
+    critic_normalization_config: CriticNormalizationConfig,
     event,
     critic_calibration_config=None,
 ) -> dict:
@@ -176,6 +305,11 @@ def run_training_attempt(
         file_mode=0o644,
     )
 
+    if training_config.normalization_enabled:
+        raise ValueError(
+            "training.normalization_enabled is a retired actor-normalization flag; "
+            "use critic_normalization instead"
+        )
     restored = None
     if resume:
         start_manifest, payload = store.latest_valid()
@@ -189,18 +323,40 @@ def run_training_attempt(
         )
         counters = dict(restored["counters"])
         normalization = restored["normalization"]
+        if not normalization_matches_config(normalization, critic_normalization_config):
+            raise ValueError("checkpoint critic normalization differs from the resolved config")
         schedules = restored["schedules"]
         task_sampler = dict(restored["task_sampler_state"])
         abandoned = int(task_sampler["unfinished_environment_count"])
+        warmup_metrics = {
+            "performed": False,
+            "reused_from_checkpoint": normalization["enabled"],
+            "warmup_steps": 0,
+            "environment_transitions": 0,
+            "agent_transitions": 0,
+            "episodes_completed": 0,
+            "seconds": 0.0,
+        }
         event(
             "training_resumed",
             checkpoint_id=start_manifest["checkpoint_id"],
             completed_updates=counters["completed_updates"],
             abandoned_environment_episodes=abandoned,
+            critic_normalization_reused=normalization["enabled"],
         )
     else:
         if list(checkpoint_directory.glob("checkpoint-*.json")):
             raise RuntimeError("a new logical run requires an empty checkpoint directory")
+        initial, normalization, warmup_metrics = _collect_normalization_warmup(
+            env=env,
+            initial=initial,
+            actor=actor,
+            output=output,
+            rollout_config=rollout_config,
+            training_config=training_config,
+            normalization_config=critic_normalization_config,
+            event=event,
+        )
         state, counters, normalization, schedules, task_sampler = _initial_state(
             actor,
             critic,
@@ -208,6 +364,7 @@ def run_training_attempt(
             critic_optimizer,
             resolved_config,
             ppo_config,
+            normalization,
         )
         start_manifest = _save_checkpoint(
             store,
@@ -220,10 +377,13 @@ def run_training_attempt(
             parent_sha256=None,
         )
         abandoned = 0
-        event("training_initial_checkpoint", checkpoint_id=start_manifest["checkpoint_id"])
+        event(
+            "training_initial_checkpoint",
+            checkpoint_id=start_manifest["checkpoint_id"],
+            critic_normalization_enabled=normalization["enabled"],
+        )
 
-    if training_config.normalization_enabled:
-        raise NotImplementedError("empirical observation normalization is not implemented")
+    normalizer = FrozenCriticGroupNormalizer(normalization, env.observation_cfg)
     start_counters = dict(counters)
     actor_memory = actor.backbone.recurrent.initial_state(
         initial[("agents", "observation")], cfg.num_envs * cfg.num_agents
@@ -238,7 +398,7 @@ def run_training_attempt(
         and (critic_memory.cell == 0).all()
     )
     current_observation = initial[("agents", "observation")].clone()
-    current_state = initial[("agents", "state")].clone()
+    current_state = normalizer.apply(initial[("agents", "state")])
     buffer = TorchRecurrentRollout(
         cfg,
         TorchRecurrentFrame(current_observation, current_state, actor_memory, critic_memory),
@@ -277,7 +437,7 @@ def run_training_attempt(
                 values = critic_result.value[:, 0]
                 output_td = env.step_actions(actions)
                 final_observation = output_td[("agents", "observation")].clone()
-                final_state = output_td[("agents", "state")].clone()
+                final_state = normalizer.apply(output_td[("agents", "state")])
                 terminated = output_td["terminated"].squeeze(-1).clone()
                 truncated = output_td["truncated"].squeeze(-1).clone()
                 done = terminated | truncated
@@ -327,7 +487,7 @@ def run_training_attempt(
                 if bool(done.any()):
                     reset_td = env.reset_mask(done)
                     current_observation = reset_td[("agents", "observation")].clone()
-                    current_state = reset_td[("agents", "state")].clone()
+                    current_state = normalizer.apply(reset_td[("agents", "state")])
                 else:
                     current_observation = final_observation
                     current_state = final_state
@@ -370,6 +530,7 @@ def run_training_attempt(
                 rollout=buffer,
                 output=output,
                 policy_config=policy_config,
+                observation_config=env.observation_cfg,
                 ppo_config=ppo_config,
                 calibration_config=critic_calibration_config,
             )
@@ -488,6 +649,23 @@ def run_training_attempt(
         "agent_counter_advanced_once": counters["agent_transitions"]
         == start_counters["agent_transitions"] + expected_agent_increment,
         "recurrent_memory_started_zero": recurrent_memory_zero,
+        "critic_normalization_matches_config": normalization_matches_config(
+            normalization, critic_normalization_config
+        ),
+        "critic_normalization_is_frozen": normalization["frozen"],
+        "critic_normalization_warmup_contract_applied": (
+            (
+                resume
+                and not warmup_metrics["performed"]
+                and warmup_metrics["reused_from_checkpoint"] == critic_normalization_config.enabled
+            )
+            or (
+                not resume
+                and warmup_metrics["performed"] == critic_normalization_config.enabled
+                and warmup_metrics["environment_transitions"]
+                == critic_normalization_config.warmup_steps * cfg.num_envs
+            )
+        ),
         "resume_reset_contract_applied": (not resume)
         or (
             restored["discard_partial_rollout"]
@@ -516,6 +694,12 @@ def run_training_attempt(
         "unfinished_environment_count": task_sampler["unfinished_environment_count"],
         "episodes_completed_total": episode_count,
         "rollout_rows": raw_rows,
+        "critic_normalization": normalization,
+        "critic_normalization_warmup": warmup_metrics,
+        "critic_normalization_warmup_environment_transitions": warmup_metrics[
+            "environment_transitions"
+        ],
+        "critic_normalization_warmup_agent_transitions": warmup_metrics["agent_transitions"],
         "measurements": {
             "team_reward_mean": reward_sum / (cfg.horizon * cfg.num_envs),
             "team_reward_min": reward_min,

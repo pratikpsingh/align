@@ -123,10 +123,23 @@ def evaluate(policy, ppo, resolved, config_path, output, device):
         "active_training_seconds": 1.0,
     }
     normalization = {
+        "schema_version": 1,
         "enabled": True,
-        "observation_count": 28,
-        "observation_mean": torch.linspace(0.0, 1.0, policy.actor_observation_dim, device=device),
-        "reward_variance": torch.tensor(0.75, device=device),
+        "contract": "frozen_active_critic_group_standardization",
+        "frozen": True,
+        "epsilon": 1e-6,
+        "clip": 5.0,
+        "warmup_steps": 7,
+        "environment_samples": 7,
+        "active_agent_samples": 28,
+        "groups": {
+            name: {"count": 84, "mean": mean, "variance": variance}
+            for name, mean, variance in (
+                ("position", 0.1, 0.2),
+                ("velocity", -0.01, 0.03),
+                ("target", 0.2, 0.4),
+            )
+        },
     }
     schedules = {"learning_rate_fraction": 0.9, "entropy_coefficient": 0.01}
     task_sampler_state = {"episode_index": 12, "seed_sequence_position": 4}

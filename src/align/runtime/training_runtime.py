@@ -10,6 +10,7 @@ import time
 from pathlib import Path
 
 from align.artifacts import create_run_directory, write_json_atomic
+from align.learning.critic_normalization_config import CriticNormalizationConfig
 from align.learning.ppo_config import RecurrentPPOConfig
 from align.learning.recovery_config import RecoveryConfig
 from align.learning.rollout import RolloutConfig
@@ -69,6 +70,11 @@ def load_resolved_config(root: Path, args) -> dict:
     training = _load(
         args.training_config or root / "configs/task-training.json", TaskTrainingConfig
     )
+    critic_normalization = _load(
+        getattr(args, "critic_normalization_config", None)
+        or root / "configs/critic-normalization-disabled.json",
+        CriticNormalizationConfig,
+    )
     task.validate_compatibility(construction, observation, reward)
     rollout.validate_dimensions(
         num_envs=task.num_envs,
@@ -99,6 +105,7 @@ def load_resolved_config(root: Path, args) -> dict:
         "ppo": ppo.to_dict(),
         "recovery": recovery.to_dict(),
         "training": training.to_dict(),
+        "critic_normalization": critic_normalization.to_dict(),
     }
 
 
@@ -208,6 +215,7 @@ def run_main(argv=None) -> int:
     parser.add_argument("--ppo-config", type=Path)
     parser.add_argument("--recovery-config", type=Path)
     parser.add_argument("--training-config", type=Path)
+    parser.add_argument("--critic-normalization-config", type=Path)
     parser.add_argument("--build-report", type=Path)
     parser.add_argument("--timeout", type=int, default=1200)
     parser.add_argument("--accept-eula", action="store_true")

@@ -63,6 +63,7 @@ class TaskTrainingBundleTests(unittest.TestCase):
             "ppo": "recurrent-ppo.json",
             "recovery": "training-recovery.json",
             "training": "task-training.json",
+            "critic_normalization": "critic-normalization-disabled.json",
         }
         values = {
             section: json.loads((root / "configs" / filename).read_text())
@@ -77,6 +78,7 @@ class TaskTrainingBundleTests(unittest.TestCase):
             self.assertEqual(bundle[8].minimum_retained_checkpoints, 3)
             self.assertEqual(bundle[9].attempts, 2)
             self.assertEqual(bundle[10], values)
+            self.assertFalse(bundle[13].enabled)
 
             values.pop("recovery")
             path.write_text(json.dumps(values))
@@ -127,6 +129,7 @@ class TaskTrainingRuntimeTests(unittest.TestCase):
                 "ppo": {"update_epochs": 1},
                 "recovery": {},
                 "training": {},
+                "critic_normalization": {},
             }
             config_path = run / "config.json"
             config_path.write_text(json.dumps(config))

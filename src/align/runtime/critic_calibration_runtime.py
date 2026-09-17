@@ -51,10 +51,16 @@ def valid_critic_result(exit_code: int, probe: object, metrics: object) -> bool:
 def summarize_critic_results(items: list[dict], config: CriticCalibrationConfig) -> dict:
     by_rate = {rate: [] for rate in config.candidate_critic_learning_rates}
     input_ranges = {}
+    critic_group_ranges = {}
+    relationship_ranges = {}
     for item in items:
         calibration = item["metrics"]["critic_calibration"]
         for name, values in calibration["input_distributions"].items():
             input_ranges.setdefault(name, []).append(values)
+        for name, values in calibration["critic_inputs"]["groups"].items():
+            critic_group_ranges.setdefault(name, []).append(values)
+        for name, values in calibration["source_relationships"].items():
+            relationship_ranges.setdefault(name, []).append(values)
         for candidate in calibration["candidates"]:
             by_rate[candidate["critic_learning_rate"]].append(candidate)
 
@@ -114,7 +120,82 @@ def summarize_critic_results(items: list[dict], config: CriticCalibrationConfig)
             }
             for name, rows in input_ranges.items()
         },
+        "critic_input_group_ranges": {
+            name: {
+                "mean_minimum": min(row["mean"] for row in rows),
+                "mean_maximum": max(row["mean"] for row in rows),
+                "standard_deviation_minimum": min(row["standard_deviation"] for row in rows),
+                "standard_deviation_maximum": max(row["standard_deviation"] for row in rows),
+            }
+            for name, rows in critic_group_ranges.items()
+        },
+        "source_relationship_ranges": {
+            name: {
+                metric: {
+                    "minimum": min(row[metric] for row in rows),
+                    "maximum": max(row[metric] for row in rows),
+                    "mean": sum(row[metric] for row in rows) / len(rows),
+                }
+                for metric in (
+                    "pearson_correlation",
+                    "mean_error",
+                    "mean_absolute_error",
+                    "root_mean_squared_error",
+                )
+            }
+            for name, rows in relationship_ranges.items()
+        },
     }
+
+
+def _feature_csv_is_valid(path: Path, expected_rows: int) -> bool:
+    with path.open(newline="", encoding="utf-8") as stream:
+        rows = list(csv.DictReader(stream))
+    if len(rows) != expected_rows or {int(row["index"]) for row in rows} != set(
+        range(expected_rows)
+    ):
+        return False
+    distribution = (
+        "count",
+        "minimum",
+        "p05",
+        "p25",
+        "median",
+        "p75",
+        "p95",
+        "maximum",
+        "mean",
+        "standard_deviation",
+        "zero_fraction",
+        "boundary_fraction",
+    )
+    for row in rows:
+        active = int(row["active_sample_count"])
+        if (
+            active < 0
+            or not row["name"]
+            or row["group"]
+            not in {
+                "position",
+                "velocity",
+                "target",
+                "mask",
+            }
+        ):
+            return False
+        if active:
+            if int(row["count"]) != active or not all(
+                math.isfinite(float(row[name])) for name in distribution[1:]
+            ):
+                return False
+            if (
+                not 0.0 <= float(row["zero_fraction"]) <= 1.0
+                or not 0.0 <= float(row["boundary_fraction"]) <= 1.0
+            ):
+                return False
+        elif any(row[name] for name in distribution):
+            return False
+    return True
 
 
 def _raw_csv_is_valid(path: Path, expected_rows: int) -> bool:
@@ -209,6 +290,7 @@ def run_main(argv=None) -> int:
     parser.add_argument("--ppo-config", type=Path)
     parser.add_argument("--recovery-config", type=Path)
     parser.add_argument("--training-config", type=Path)
+    parser.add_argument("--critic-normalization-config", type=Path)
     parser.add_argument("--critic-calibration-config", type=Path)
     parser.add_argument("--build-report", type=Path)
     parser.add_argument("--timeout", type=int, default=1800)
@@ -332,6 +414,12 @@ def run_main(argv=None) -> int:
                 if (seed_directory / "probe/critic-samples.csv").exists()
                 else False
             )
+            feature_csv = seed_directory / "probe/critic-feature-summary.csv"
+            features_valid = (
+                _feature_csv_is_valid(feature_csv, resolved["policy"]["critic_state_dim"])
+                if feature_csv.exists()
+                else False
+            )
             item = {
                 "policy_seed": seed,
                 "command": command,
@@ -340,10 +428,15 @@ def run_main(argv=None) -> int:
                 "probe": probe,
                 "metrics": metrics,
                 "host_raw_csv_valid": raw_valid,
+                "host_feature_csv_valid": features_valid,
             }
             report["seeds"].append(item)
             write_json_atomic(run / "report.json", report)
-            if not valid_critic_result(exit_code, probe, metrics) or not raw_valid:
+            if (
+                not valid_critic_result(exit_code, probe, metrics)
+                or not raw_valid
+                or not features_valid
+            ):
                 raise RuntimeError(f"seed {seed} critic calibration failed")
             active_container = None
 

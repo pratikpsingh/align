@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import argparse
 import copy
+import csv
 import json
+import math
 import shutil
 import subprocess
 import time
@@ -35,7 +37,47 @@ def validate_stability_resolved_config(resolved: dict, stability: StabilityConfi
     formation_start_step = construction.ground_steps + construction.takeoff_steps
     if resolved["rollout"]["horizon"] <= formation_start_step:
         raise ValueError("stability rollout must reach the formation phase")
+    normalization = resolved["critic_normalization"]
+    if normalization["enabled"] and (
+        normalization["warmup_steps"] != resolved["rollout"]["horizon"]
+    ):
+        raise ValueError("normalized stability requires one rollout-horizon warmup")
     return formation_start_step
+
+
+def valid_normalization_warmup_csv(
+    path: Path, *, warmup_steps: int, num_envs: int, num_agents: int
+) -> bool:
+    """Audit the raw reductions behind frozen critic moments."""
+    if not path.is_file():
+        return False
+    with path.open(newline="", encoding="utf-8") as stream:
+        rows = list(csv.DictReader(stream))
+    if len(rows) != warmup_steps:
+        return False
+    expected_count = num_envs * num_agents * 3
+    numeric = (
+        "position_sum",
+        "position_sum_squares",
+        "velocity_sum",
+        "velocity_sum_squares",
+        "target_sum",
+        "target_sum_squares",
+        "action_min",
+        "action_max",
+    )
+    return all(
+        int(row["warmup_step"]) == step
+        and all(
+            int(row[f"{group}_count"]) == expected_count
+            for group in ("position", "velocity", "target")
+        )
+        and all(math.isfinite(float(row[name])) for name in numeric)
+        and -1.0 <= float(row["action_min"]) <= float(row["action_max"]) <= 1.0
+        and int(row["terminated_count"]) >= 0
+        and int(row["truncated_count"]) >= 0
+        for step, row in enumerate(rows)
+    )
 
 
 def valid_phase(exit_code: int, probe: object, metrics: object, flag: str) -> bool:
@@ -66,6 +108,13 @@ def summarize_seed_results(items: list[dict]) -> dict:
         "seed_count": len(items),
         "seeds": [item["policy_seed"] for item in items],
         "update_count": len(updates),
+        "critic_normalization_enabled": all(
+            item["train"]["metrics"]["critic_normalization"]["enabled"] for item in items
+        ),
+        "critic_normalization_warmup_environment_transitions": sum(
+            item["train"]["metrics"]["critic_normalization_warmup_environment_transitions"]
+            for item in items
+        ),
         "post_update_approximate_kl": bounds(updates, "post_approximate_kl"),
         "post_update_policy_clip_fraction": bounds(updates, "post_policy_clip_fraction"),
         "post_update_value_clip_fraction": bounds(updates, "post_value_clip_fraction"),
@@ -152,6 +201,7 @@ def run_main(argv=None) -> int:
     parser.add_argument("--ppo-config", type=Path)
     parser.add_argument("--recovery-config", type=Path)
     parser.add_argument("--training-config", type=Path)
+    parser.add_argument("--critic-normalization-config", type=Path)
     parser.add_argument("--stability-config", type=Path)
     parser.add_argument("--build-report", type=Path)
     parser.add_argument("--timeout", type=int, default=1800)
@@ -277,6 +327,23 @@ def run_main(argv=None) -> int:
                 write_json_atomic(run / "report.json", report)
                 if not valid_phase(exit_code, probe, metrics, flag):
                     raise RuntimeError(f"seed {seed} {phase} phase failed")
+                if scenario == "stability":
+                    normalization = resolved["critic_normalization"]
+                    warmup_paths = list(seed_directory.glob("train/**/normalization-warmup.csv"))
+                    expected_paths = 1 if normalization["enabled"] else 0
+                    warmup_valid = len(warmup_paths) == expected_paths and (
+                        not normalization["enabled"]
+                        or valid_normalization_warmup_csv(
+                            warmup_paths[0],
+                            warmup_steps=normalization["warmup_steps"],
+                            num_envs=resolved["rollout"]["num_envs"],
+                            num_agents=resolved["rollout"]["num_agents"],
+                        )
+                    )
+                    phase_result["normalization_warmup_csv_valid"] = warmup_valid
+                    write_json_atomic(run / "report.json", report)
+                    if not warmup_valid:
+                        raise RuntimeError(f"seed {seed} normalization warmup audit failed")
                 active_container = None
             write_json_atomic(run / "report.json", report)
 

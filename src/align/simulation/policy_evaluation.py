@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import csv
 import math
 from pathlib import Path
@@ -9,9 +10,14 @@ from pathlib import Path
 import torch
 
 from align.learning.checkpoint_store import CheckpointStore
+from align.learning.critic_normalization_config import CriticNormalizationConfig
 from align.learning.ppo_config import RecurrentPPOConfig
 from align.learning.rollout import RolloutConfig
 from align.learning.stability_config import StabilityConfig
+from align.learning.torch_normalization import (
+    FrozenCriticGroupNormalizer,
+    normalization_matches_config,
+)
 from align.learning.torch_recovery import restore_learner_state
 from align.learning.training_config import TaskTrainingConfig
 from align.policies.config import RecurrentPolicyConfig
@@ -52,6 +58,7 @@ def run_policy_evaluation(
     ppo_config: RecurrentPPOConfig,
     rollout_config: RolloutConfig,
     training_config: TaskTrainingConfig,
+    critic_normalization_config: CriticNormalizationConfig,
     stability_config: StabilityConfig,
     event,
     checkpoint_update: int | None = None,
@@ -81,8 +88,12 @@ def run_policy_evaluation(
         critic_optimizer=critic_optimizer,
         expected_config=resolved_config,
     )
-    if restored["normalization"].get("enabled"):
-        raise NotImplementedError("evaluation for empirical normalization is not implemented")
+    normalization = restored["normalization"]
+    normalization_before = copy.deepcopy(normalization)
+    normalizer = FrozenCriticGroupNormalizer(normalization, env.observation_cfg)
+    normalized_initial_state = normalizer.apply(initial[("agents", "state")])
+    if not normalization_matches_config(normalization, critic_normalization_config):
+        raise ValueError("checkpoint critic normalization differs from evaluation config")
     actor.eval()
     before = {name: value.detach().clone() for name, value in actor.state_dict().items()}
 
@@ -192,6 +203,14 @@ def run_policy_evaluation(
         "actions_are_bounded": action_min >= -1.0 and action_max <= 1.0,
         "environment_did_not_clip_actions": saturation_count == 0,
         "actor_parameters_unchanged": parameters_unchanged,
+        "critic_normalization_is_frozen": normalization["frozen"],
+        "critic_normalization_matches_config": normalization_matches_config(
+            normalization, critic_normalization_config
+        ),
+        "critic_normalization_state_is_finite": bool(
+            torch.isfinite(normalized_initial_state).all()
+        ),
+        "critic_normalization_unchanged": normalization == normalization_before,
         "phase_accounting_is_exact": sum(phase_rows.values()) == raw_rows,
     }
     event(
@@ -209,6 +228,8 @@ def run_policy_evaluation(
         "requested_completed_update": expected_update,
         "deterministic_actions": True,
         "optimizer_updates": 0,
+        "critic_normalization": normalization,
+        "critic_normalization_updates": 0,
         "evaluation_steps": stability_config.evaluation_steps,
         "raw_rows": raw_rows,
         "phase_rows": phase_rows,

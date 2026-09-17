@@ -37,9 +37,10 @@ Acceptance: simple controlled motion behaves in the correct axis/units; reset an
 Dependencies: stable task contracts and reward/termination semantics.
 
 - [x] Implement a shared actor over the fixed-capacity masked neighbor observation, LSTM memory, and an explicitly transformed continuous-action distribution. Run `20260916T183350.312358IST-f57f1110` passed all 18 vendor-PyTorch CUDA checks.
-- [ ] Keep centralized critic inputs separate from actor inputs. Normalize observations using saved training statistics.
+- [x] Keep centralized critic inputs separate from actor inputs. Normalize critic observations using saved training statistics.
   - [x] Actor and critic APIs, recurrent state, inputs, and parameters are separate; the actor accepts only the 55-value local vector and the critic accepts the 80-value training state.
-  - [ ] Implement, checkpoint, and restore empirical observation normalization if it improves on the current declared feature scaling.
+  - [x] Implement, checkpoint, and restore critic-only active-group normalization with frozen warmup statistics. Run `20260917T125147.124653IST-920dcb9c` passed two-seed training and fresh evaluation; explained variance improved sharply, while formation metrics remained mixed and no evaluation succeeded.
+  - [x] Implement semantic diagnostics for all 80 critic inputs, active-slot versus padding checks, saturation, value/return alignment, and host-audited raw summaries. Run `20260917T121849.878540IST-4cabd9a6` passed and selected a critic-only active-feature group-normalization experiment with frozen checkpointed statistics.
 - [ ] Implement rollout collection, GAE, PPO updates, actual temporal sequence unrolling, and per-agent recurrent resets.
   - [x] Define and CPU-validate time-major rollout storage, separate bootstrap/trace/reset masks, GAE, initial LSTM states, padding masks, and episode-safe chunks.
   - [x] Collect a device-resident live rollout with per-drone actor memory, per-environment critic memory, partial resets, episode-safe chunks, and CPU-reference parity. Accepted run `20260916T190924.021233IST-667b7fa8` passed all device and host checks.

@@ -64,6 +64,7 @@ class StabilityBundleTests(unittest.TestCase):
             "recovery": "training-recovery.json",
             "training": "task-training.json",
             "stability": "training-stability.json",
+            "critic_normalization": "critic-normalization-active-groups.json",
         }
         values = {
             section: json.loads((root / "configs" / name).read_text())
@@ -79,6 +80,7 @@ class StabilityBundleTests(unittest.TestCase):
             self.assertEqual(bundle[9].attempts, 3)
             self.assertEqual(bundle[10], values)
             self.assertEqual(bundle[11].evaluation_steps, 800)
+            self.assertTrue(bundle[13].enabled)
 
 
 class StabilityRuntimeTests(unittest.TestCase):
@@ -90,6 +92,9 @@ class StabilityRuntimeTests(unittest.TestCase):
             ),
             "task": json.loads((root / "configs/recurrent-stability-task.json").read_text()),
             "rollout": json.loads((root / "configs/recurrent-stability-rollout.json").read_text()),
+            "critic_normalization": json.loads(
+                (root / "configs/critic-normalization-active-groups.json").read_text()
+            ),
         }
         stability = StabilityConfig.from_dict(
             json.loads((root / "configs/training-stability.json").read_text())
@@ -130,7 +135,13 @@ class StabilityRuntimeTests(unittest.TestCase):
             }
             return {
                 "policy_seed": seed,
-                "train": {"metrics": {"measurements": [update, update]}},
+                "train": {
+                    "metrics": {
+                        "measurements": [update, update],
+                        "critic_normalization": {"enabled": True},
+                        "critic_normalization_warmup_environment_transitions": 3072,
+                    }
+                },
                 "evaluation": {"metrics": {"measurements": measurements}},
             }
 

@@ -10,8 +10,9 @@ import numpy as np
 import torch
 
 from align.learning.checkpoint_store import RECOVERY_MODE
+from align.learning.torch_normalization import validate_normalization_state
 
-STATE_SCHEMA_VERSION = 1
+STATE_SCHEMA_VERSION = 2
 EXPECTED_STATE_KEYS = {
     "state_schema_version",
     "recovery_mode",
@@ -44,8 +45,7 @@ def capture_learner_state(
     required_counts = ("completed_updates", "environment_transitions", "agent_transitions")
     if any(type(counters.get(name)) is not int or counters[name] < 0 for name in required_counts):
         raise ValueError("learner counters must include nonnegative completed progress")
-    if not isinstance(normalization, dict) or "enabled" not in normalization:
-        raise ValueError("normalization must declare whether it is enabled")
+    validate_normalization_state(normalization)
     if not all(
         isinstance(value, dict) for value in (schedules, resolved_config, task_sampler_state)
     ):
@@ -103,8 +103,7 @@ def _load_validated_state(path: Path, expected_config: Mapping, map_location) ->
     for name in ("actor", "critic", "actor_optimizer", "critic_optimizer"):
         if not isinstance(state[name], Mapping):
             raise ValueError(f"checkpoint {name} state is not a mapping")
-    if not isinstance(state["normalization"], dict) or "enabled" not in state["normalization"]:
-        raise ValueError("checkpoint normalization state is invalid")
+    validate_normalization_state(state["normalization"])
     return state
 
 

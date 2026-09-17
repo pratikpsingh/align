@@ -8,6 +8,7 @@ from pathlib import Path
 import torch
 
 from align.artifacts import write_json_atomic
+from align.learning.critic_normalization_config import CriticNormalizationConfig
 from align.learning.ppo_config import RecurrentPPOConfig
 from align.learning.recovery_config import RecoveryConfig
 from align.learning.rollout import RolloutConfig
@@ -52,6 +53,7 @@ def run_stability_training(
     ppo_config: RecurrentPPOConfig,
     recovery_config: RecoveryConfig,
     training_config: TaskTrainingConfig,
+    critic_normalization_config: CriticNormalizationConfig,
     stability_config: StabilityConfig,
     event,
 ) -> dict:
@@ -93,6 +95,7 @@ def run_stability_training(
             ppo_config=ppo_config,
             recovery_config=recovery_config,
             training_config=training_config,
+            critic_normalization_config=critic_normalization_config,
             event=event,
         )
         metrics["stability_guidance"] = _assessment(metrics, stability_config)
@@ -146,6 +149,13 @@ def run_stability_training(
         "diagnostics_are_finite": all(math.isfinite(value) for value in diagnostic_values),
         "rollout_budget_reaches_configured_formation_phase": rollout_config.horizon
         > env.construction_cfg.ground_steps + env.construction_cfg.takeoff_steps,
+        "normalization_warmup_occurs_only_before_first_update": (
+            sum(item["critic_normalization_warmup"]["performed"] for item in attempts)
+            == int(critic_normalization_config.enabled)
+        ),
+        "normalization_state_is_identical_across_updates": all(
+            item["critic_normalization"] == attempts[0]["critic_normalization"] for item in attempts
+        ),
     }
     return {
         "status": "passed" if all(checks.values()) else "failed",
@@ -155,6 +165,16 @@ def run_stability_training(
         "rollout_horizon": rollout_config.horizon,
         "environment_transitions": expected_environment,
         "agent_transitions": expected_agents,
+        "critic_normalization": final["critic_normalization"],
+        "critic_normalization_warmup_environment_transitions": sum(
+            item["critic_normalization_warmup"]["environment_transitions"] for item in attempts
+        ),
+        "critic_normalization_warmup_agent_transitions": sum(
+            item["critic_normalization_warmup"]["agent_transitions"] for item in attempts
+        ),
+        "critic_normalization_warmup_seconds": sum(
+            item["critic_normalization_warmup"]["seconds"] for item in attempts
+        ),
         "final_counters": final["end_counters"],
         "initial_checkpoint_id": attempts[0]["start_checkpoint_id"],
         "final_checkpoint_id": final["committed_checkpoint_id"],

@@ -97,6 +97,7 @@ def audit_training_run(run: Path) -> dict:
             "ppo",
             "recovery",
             "training",
+            "critic_normalization",
         },
         "both_attempts_passed_container_checks": all(
             item.get("status") == "passed"

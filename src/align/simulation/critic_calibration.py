@@ -11,11 +11,13 @@ import torch
 from torch import nn
 
 from align.learning.critic_calibration_config import CriticCalibrationConfig
+from align.learning.critic_diagnostics_schema import critic_feature_layout
 from align.learning.ppo_config import RecurrentPPOConfig
 from align.learning.torch_ppo import compute_critic_batch
 from align.learning.torch_rollout import TorchRecurrentRollout, TorchSequenceChunks
 from align.policies.config import RecurrentPolicyConfig
 from align.policies.torch_recurrent import CentralizedRecurrentCritic
+from align.tasks.observation import ObservationConfig
 
 SAMPLE_COLUMNS = (
     "critic_learning_rate",
@@ -30,6 +32,32 @@ SAMPLE_COLUMNS = (
     "value_delta",
     "absolute_value_delta",
     "value_clipped",
+)
+
+DISTRIBUTION_COLUMNS = (
+    "count",
+    "minimum",
+    "p05",
+    "p25",
+    "median",
+    "p75",
+    "p95",
+    "maximum",
+    "mean",
+    "standard_deviation",
+)
+
+FEATURE_COLUMNS = (
+    "index",
+    "name",
+    "slot",
+    "group",
+    "axis",
+    "is_mask",
+    "active_sample_count",
+    *DISTRIBUTION_COLUMNS,
+    "zero_fraction",
+    "boundary_fraction",
 )
 
 
@@ -55,6 +83,120 @@ def _distribution(value: torch.Tensor) -> dict:
     }
 
 
+def _relationship(left: torch.Tensor, right: torch.Tensor) -> dict:
+    """Measure linear agreement without hiding scale or constant signals."""
+    x = left.detach().float().flatten()
+    y = right.detach().float().flatten()
+    if x.shape != y.shape or x.numel() == 0:
+        raise ValueError("relationship samples must be nonempty and have equal shape")
+    residual = x - y
+    centered_x = x - x.mean()
+    centered_y = y - y.mean()
+    denominator = torch.sqrt(centered_x.square().sum() * centered_y.square().sum())
+    correlation = torch.where(
+        denominator > torch.finfo(x.dtype).eps,
+        (centered_x * centered_y).sum() / denominator,
+        denominator.new_zeros(()),
+    )
+    result = {
+        "count": int(x.numel()),
+        "pearson_correlation": float(correlation.cpu()),
+        "mean_error": float(residual.mean().cpu()),
+        "mean_absolute_error": float(residual.abs().mean().cpu()),
+        "root_mean_squared_error": float(residual.square().mean().sqrt().cpu()),
+    }
+    if not all(math.isfinite(value) for key, value in result.items() if key != "count"):
+        raise ValueError("relationship diagnostics must be finite")
+    return result
+
+
+def _critic_input_diagnostics(
+    states: torch.Tensor,
+    observation_config: ObservationConfig,
+    expected_agents: int,
+    output: Path,
+) -> dict:
+    """Audit every semantic critic input and its fixed-capacity padding."""
+    layout = critic_feature_layout(observation_config)
+    if states.ndim != 2 or states.shape[1] != observation_config.critic_dimension:
+        raise ValueError("critic diagnostic states have the wrong shape")
+    if states.shape[0] == 0 or not bool(torch.isfinite(states).all()):
+        raise ValueError("critic diagnostic states must be nonempty and finite")
+
+    capacity = observation_config.critic_capacity
+    features_per_agent = observation_config.critic_agent_feature_count
+    mask_start = capacity * features_per_agent
+    feature_values = states[:, :mask_start].reshape(-1, capacity, features_per_agent)
+    masks = states[:, mask_start:]
+    binary_masks = bool(((masks == 0) | (masks == 1)).all())
+    active_counts = masks.sum(dim=1)
+    inactive_values = feature_values[masks == 0]
+
+    rows = []
+    grouped = {name: [] for name in ("position", "velocity", "target")}
+    for feature in layout:
+        values = states[:, feature.index]
+        if feature.is_mask:
+            selected = values
+        else:
+            selected = values[masks[:, feature.slot].bool()]
+            if selected.numel():
+                grouped[feature.group].append(selected)
+        distribution = _distribution(selected) if selected.numel() else None
+        rows.append(
+            {
+                **feature.to_dict(),
+                "active_sample_count": int(selected.numel()),
+                "distribution": distribution,
+                "zero_fraction": (
+                    float((selected == 0).float().mean().cpu()) if selected.numel() else None
+                ),
+                "boundary_fraction": (
+                    float((selected.abs() >= 1.0 - 1e-6).float().mean().cpu())
+                    if selected.numel()
+                    else None
+                ),
+            }
+        )
+
+    with (output / "critic-feature-summary.csv").open("x", newline="", encoding="utf-8") as stream:
+        writer = csv.DictWriter(stream, fieldnames=FEATURE_COLUMNS)
+        writer.writeheader()
+        for row in rows:
+            distribution = row["distribution"] or {}
+            writer.writerow(
+                {
+                    **{key: row[key] for key in FEATURE_COLUMNS if key not in DISTRIBUTION_COLUMNS},
+                    **{key: distribution.get(key, "") for key in DISTRIBUTION_COLUMNS},
+                }
+            )
+
+    group_distributions = {
+        name: _distribution(torch.cat(values)) for name, values in grouped.items() if values
+    }
+    group_distributions["mask"] = _distribution(masks)
+    checks = {
+        "state_dimension_matches_semantic_layout": len(layout) == states.shape[1],
+        "feature_summary_row_count_is_exact": len(rows) == observation_config.critic_dimension,
+        "agent_masks_are_binary": binary_masks,
+        "active_agent_count_is_exact": bool((active_counts == expected_agents).all()),
+        "inactive_padding_is_zero": inactive_values.numel() == 0
+        or bool((inactive_values == 0).all()),
+        "declared_scaled_features_are_bounded": bool(
+            ((feature_values >= -1.0) & (feature_values <= 1.0)).all()
+        ),
+    }
+    return {
+        "status": "passed" if all(checks.values()) else "failed",
+        "checks": checks,
+        "state_sample_count": int(states.shape[0]),
+        "state_dimension": int(states.shape[1]),
+        "expected_active_agents": expected_agents,
+        "groups": group_distributions,
+        "features": rows,
+    }
+
+
 def _maximum_parameter_change(before: dict, module: torch.nn.Module) -> float:
     return max(
         float((value.detach() - before[name]).abs().max().cpu())
@@ -77,6 +219,7 @@ def calibrate_critic_steps(
     rollout: TorchRecurrentRollout,
     output: Path,
     policy_config: RecurrentPolicyConfig,
+    observation_config: ObservationConfig,
     ppo_config: RecurrentPPOConfig,
     calibration_config: CriticCalibrationConfig,
 ) -> dict:
@@ -106,6 +249,16 @@ def calibrate_critic_steps(
         "returns": _distribution(source.returns),
         "advantages": _distribution(source.advantages),
         "return_minus_old_value": _distribution(source.returns - source.old_values),
+    }
+    critic_inputs = _critic_input_diagnostics(
+        rows.states[valid],
+        observation_config,
+        rollout.config.num_agents,
+        output,
+    )
+    source_relationships = {
+        "old_value_to_return": _relationship(source.old_values, source.returns),
+        "team_reward_to_return": _relationship(source.team_rewards, source.returns),
     }
 
     candidate_results = []
@@ -172,6 +325,7 @@ def calibrate_critic_steps(
                 "value_delta": _distribution(delta),
                 "absolute_value_delta": _distribution(absolute_delta),
                 "residual": _distribution(post.returns - post.predicted_values),
+                "prediction_to_return": _relationship(post.predicted_values, post.returns),
                 "guidance": guidance,
             }
             candidate_results.append(result)
@@ -247,6 +401,8 @@ def calibrate_critic_steps(
             result["guidance"]["pre_predictions_reproduce_rollout_values"]
             for result in candidate_results
         ),
+        "critic_input_contract_passed": critic_inputs["status"] == "passed"
+        and all(critic_inputs["checks"].values()),
         "candidate_parameter_changes_are_positive": all(
             result["critic_parameter_max_abs_change"] > 0 for result in candidate_results
         ),
@@ -259,6 +415,8 @@ def calibrate_critic_steps(
         "sample_count_per_candidate": expected_samples,
         "raw_rows": raw_rows,
         "input_distributions": input_distributions,
+        "source_relationships": source_relationships,
+        "critic_inputs": critic_inputs,
         "candidates": candidate_results,
         "rates_within_value_clip_guidance": passing,
         "largest_rate_within_value_clip_guidance": passing[0] if passing else None,

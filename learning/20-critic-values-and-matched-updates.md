@@ -188,3 +188,65 @@ critic has not yet learned useful return structure. A longer bounded run can
 test whether the second finding changes with experience. If it does not,
 normalization or the critic target design should be investigated with its own
 checkpoint and evaluation contract.
+
+
+## Why feature-level measurements come before normalization
+
+The centralized state is already divided by declared physical scales and then
+passes through LayerNorm. Negative explained variance alone does not prove that
+one input feature is too large. It says the critic's prediction errors vary
+more than the returns, which can also come from poor ordering, bootstrapped
+targets, or insufficient representation.
+
+The critic receives eight slots. Each slot has position xyz, velocity xyz, and
+target xyz, followed by one mask per slot. For four drones, the last four slots
+must remain zero with masks equal to zero. The semantic diagnostic measures
+active physical values separately from this padding. Otherwise the zeros from
+unused capacity would make feature variance look artificially small.
+
+For example, suppose a target feature has standard deviation 0.01 after scaling
+while velocity has standard deviation 0.4. That imbalance supports testing
+empirical feature normalization. If all physical groups occupy useful ranges
+but predicted values are negatively correlated with returns, changing input
+scale alone has weaker justification. Return normalization or critic-target
+design may then be the better controlled experiment.
+
+The new calibration therefore answers four questions before changing the
+learner:
+
+1. Are masks, active-agent counts, and padded slots correct?
+2. Are physical features finite, bounded, saturated, or nearly constant?
+3. How do value and reward signals correlate with GAE returns?
+4. Does a candidate update improve value-to-return alignment as well as loss?
+
+A passing diagnostic establishes trustworthy measurements, not that
+normalization is beneficial. The selected active-group experiment now has an
+explicit warmup, frozen checkpoint state, fresh-evaluation contract, and
+accepted two-seed run; [the normalization lesson](22-frozen-critic-input-normalization.md)
+explains its behavior and limits.
+
+
+## What the semantic diagnostic found
+
+Accepted run `20260917T121849.878540IST-4cabd9a6` showed that the state assembly
+is correct: every row had four active agents, every unused slot was zero, and
+no physical input reached its clipping boundary. Input corruption and clipping
+are therefore poor explanations for the negative explained variance.
+
+The physical groups do not vary on similar scales. Position and target values
+had standard deviations near 0.130 and 0.182, while velocity was near 0.013.
+Whole-vector LayerNorm does not give each semantic group its own variance; the
+small velocity changes can remain weak relative to the fixed positions,
+targets, and masks.
+
+Value-to-return correlation also changed sign between seeds and stayed almost
+unchanged after the conservative critic step. This pointed to representation
+and input balance rather than optimizer displacement. The accepted next
+experiment normalized only active critic position, velocity, and target groups;
+it did not change decentralized actor inputs.
+
+Statistics must be collected in a separate warmup rollout and then frozen. If
+they changed inside the same rollout, values stored during collection would no
+longer match values reconstructed for PPO clipping. Frozen statistics preserve
+that identity. Padding remains zero and masks remain binary, because centering
+padded zeros would turn absence into a nonzero feature.

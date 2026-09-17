@@ -60,6 +60,34 @@ The pre-update prediction must reproduce the value stored during collection
 within 1e-5. This check confirms that recurrent chunks reconstruct the same
 critic calculation before comparing candidate steps.
 
+## Semantic critic-input diagnostics
+
+The critic state has 80 scalars: eight fixed agent slots, nine physical values
+per slot, followed by eight presence masks. Each physical slot contains world
+position xyz, velocity xyz, and target xyz. The new diagnostic assigns an
+explicit name to every index and writes `critic-feature-summary.csv`.
+
+For every active feature it records the same distribution statistics as the
+value targets, plus the fraction equal to zero and the fraction at the declared
+`[-1, 1]` scaling boundary. It also pools active values into position, velocity,
+and target groups. Padding is excluded from these physical distributions. Mask
+features retain all samples so unused capacity remains visible.
+
+Hard acceptance now also requires:
+
+- every state has exactly the configured 80 dimensions;
+- every state contains exactly four active-agent masks for this task;
+- masks are binary;
+- all inactive feature slots are zero;
+- declared scaled physical features remain in `[-1, 1]`;
+- the host independently parses exactly 80 named feature rows.
+
+The calibration also reports Pearson correlation, mean error, mean absolute
+error, and RMSE between old values and returns and between immediate team
+reward and returns. Correlation measures ordering; error measures scale and
+offset. Both are needed because explained variance can be poor even when the
+mean prediction is close.
+
 ## Acceptance and selection
 
 Hard acceptance requires:
@@ -70,7 +98,9 @@ Hard acceptance requires:
 - finite input, loss, gradient, prediction, and delta measurements;
 - identical rollout-value reconstruction before every candidate update;
 - positive parameter changes;
-- an independently parsed raw CSV with the exact row count.
+- an independently parsed raw sample CSV with the exact row count;
+- an independently parsed 80-row semantic feature summary whose mask, padding,
+  bounds, and active-agent checks all pass.
 
 A candidate is within initial guidance when no more than 50% of its samples
 move beyond the configured value clip range of 0.2. The host reports the
@@ -123,6 +153,7 @@ The run is saved under runs/critic-calibration/<run-id>/:
 - each seed directory contains its exact resolved configuration and checkpoint;
 - probe/rollout.csv contains the physical rollout;
 - probe/critic-samples.csv contains every matched candidate sample;
+- probe/critic-feature-summary.csv contains one named row for every critic input;
 - probe/updates.csv and metrics.json retain the primary PPO update and all
   critic calibration summaries;
 - native simulator logs, events, scene, and assets remain with each seed.
@@ -172,3 +203,33 @@ learning and critic accuracy remain unestablished.
 The full 166-test suite passed under Python 3.10 and Python 3.12, along with
 Ruff lint, format, compilation, and diff checks. Rendering and video remain
 unvalidated. The ignored run directory requires separate backup.
+
+
+## Accepted semantic-diagnostic evidence
+
+Run `20260917T121849.878540IST-4cabd9a6` passed on GPU 0 in 167.734 seconds
+using image
+`sha256:efcb66564b781556fac6b83196b3bde56dfb3831f4061a52ebfea926ee23d3f2`.
+Both simulator probes, all critic-input checks, both raw candidate tables, and
+both 80-row feature tables passed. GPU 0 returned to 16 MiB and no compute
+process remained.
+
+Both seeds had exactly four active masks per state, binary masks, zero inactive
+padding, bounded physical inputs, and no physical values at the `[-1, 1]`
+boundary. Group standard deviations were approximately 0.130 for position,
+0.182 for target, and 0.0126-0.0135 for velocity. Velocity therefore enters the
+critic at roughly one tenth to one fourteenth the variation of the other
+physical groups before the critic's whole-vector LayerNorm.
+
+Old-value versus return correlation was -0.1524 for seed 41 and +0.1554 for
+seed 73. The selected `1e-5` update changed these to -0.1514 and +0.1494. It
+controlled value displacement but did not improve ordering in this single
+step.
+
+That controlled change is now implemented and accepted as run
+`20260917T125147.124653IST-920dcb9c`. It collected one declared active-slot
+warmup per seed, kept padding and masks unchanged, froze and checkpointed group
+moments, skipped warmup on resume, and restored them without evaluation updates.
+Short-run explained variance improved markedly, while formation outcomes stayed
+mixed with no successes. See [frozen critic normalization](23-frozen-critic-normalization.md)
+for the contract, raw counts, results, and limits.

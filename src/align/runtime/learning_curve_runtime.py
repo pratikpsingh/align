@@ -242,6 +242,7 @@ def run_main(argv=None) -> int:
     parser.add_argument("--ppo-config", type=Path)
     parser.add_argument("--recovery-config", type=Path)
     parser.add_argument("--training-config", type=Path)
+    parser.add_argument("--critic-normalization-config", type=Path)
     parser.add_argument("--learning-curve-config", type=Path)
     parser.add_argument("--build-report", type=Path)
     parser.add_argument("--timeout", type=int, default=1800)

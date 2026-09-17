@@ -9,6 +9,7 @@ from tempfile import TemporaryDirectory
 
 from align.learning.critic_calibration_config import CriticCalibrationConfig
 from align.runtime.critic_calibration_runtime import (
+    _feature_csv_is_valid,
     _raw_csv_is_valid,
     summarize_critic_results,
     valid_critic_result,
@@ -120,6 +121,28 @@ class CriticCalibrationRuntimeTests(unittest.TestCase):
                         "returns": distribution,
                         "old_values": distribution,
                     },
+                    "critic_inputs": {
+                        "groups": {
+                            "position": distribution,
+                            "velocity": distribution,
+                            "target": distribution,
+                            "mask": distribution,
+                        }
+                    },
+                    "source_relationships": {
+                        "old_value_to_return": {
+                            "pearson_correlation": -0.2,
+                            "mean_error": 0.4,
+                            "mean_absolute_error": 0.4,
+                            "root_mean_squared_error": 0.5,
+                        },
+                        "team_reward_to_return": {
+                            "pearson_correlation": 0.3,
+                            "mean_error": 0.1,
+                            "mean_absolute_error": 0.2,
+                            "root_mean_squared_error": 0.25,
+                        },
+                    },
                 }
             },
         }
@@ -158,6 +181,68 @@ class CriticCalibrationRuntimeTests(unittest.TestCase):
         self.assertFalse(valid_critic_result(1, probe, metrics))
         probe["critic_calibration_tested"] = False
         self.assertFalse(valid_critic_result(0, probe, metrics))
+
+    def test_feature_csv_audit_requires_complete_finite_semantic_rows(self):
+        fields = (
+            "index",
+            "name",
+            "slot",
+            "group",
+            "axis",
+            "is_mask",
+            "active_sample_count",
+            "count",
+            "minimum",
+            "p05",
+            "p25",
+            "median",
+            "p75",
+            "p95",
+            "maximum",
+            "mean",
+            "standard_deviation",
+            "zero_fraction",
+            "boundary_fraction",
+        )
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "features.csv"
+            with path.open("w", newline="") as stream:
+                writer = csv.DictWriter(stream, fieldnames=fields)
+                writer.writeheader()
+                for index in range(2):
+                    writer.writerow(
+                        {
+                            "index": index,
+                            "name": f"agent_0/feature_{index}",
+                            "slot": 0,
+                            "group": "position",
+                            "axis": "x",
+                            "is_mask": False,
+                            "active_sample_count": 3,
+                            "count": 3,
+                            "minimum": -0.1,
+                            "p05": -0.1,
+                            "p25": 0.0,
+                            "median": 0.1,
+                            "p75": 0.2,
+                            "p95": 0.3,
+                            "maximum": 0.3,
+                            "mean": 0.1,
+                            "standard_deviation": 0.1,
+                            "zero_fraction": 0.0,
+                            "boundary_fraction": 0.0,
+                        }
+                    )
+            self.assertTrue(_feature_csv_is_valid(path, 2))
+            self.assertFalse(_feature_csv_is_valid(path, 3))
+            with path.open(newline="", encoding="utf-8") as stream:
+                rows = list(csv.DictReader(stream))
+            rows[1]["mean"] = "nan"
+            with path.open("w", newline="") as stream:
+                writer = csv.DictWriter(stream, fieldnames=fields)
+                writer.writeheader()
+                writer.writerows(rows)
+            self.assertFalse(_feature_csv_is_valid(path, 2))
 
     def test_raw_csv_audit_requires_exact_finite_rows(self):
         fields = (
