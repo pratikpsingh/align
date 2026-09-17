@@ -7,9 +7,12 @@ import math
 import torch
 
 from align.learning.critic_normalization_config import CriticNormalizationConfig
+from align.learning.critic_normalization_state import (
+    normalization_standard_deviation,
+    validate_normalization_state,
+)
 from align.tasks.observation import ObservationConfig
 
-NORMALIZATION_SCHEMA_VERSION = 1
 GROUP_SLICES = {
     "position": slice(0, 3),
     "velocity": slice(3, 6),
@@ -20,66 +23,11 @@ GROUP_SLICES = {
 def disabled_normalization_state() -> dict:
     """Return the complete checkpoint state for the declared-scale baseline."""
     return {
-        "schema_version": NORMALIZATION_SCHEMA_VERSION,
+        "schema_version": 1,
         "enabled": False,
         "contract": "declared_feature_scaling",
         "frozen": True,
     }
-
-
-def validate_normalization_state(state: object) -> dict:
-    """Validate a normalization checkpoint without importing simulator code."""
-    if not isinstance(state, dict):
-        raise ValueError("normalization state must be a dictionary")
-    common = {"schema_version", "enabled", "contract", "frozen"}
-    if state.get("schema_version") != NORMALIZATION_SCHEMA_VERSION:
-        raise ValueError("normalization state schema is incompatible")
-    if type(state.get("enabled")) is not bool or type(state.get("frozen")) is not bool:
-        raise ValueError("normalization enabled and frozen fields must be bool")
-    if not state["frozen"]:
-        raise ValueError("checkpoint normalization state must be frozen")
-    if not state["enabled"]:
-        if set(state) != common or state["contract"] != "declared_feature_scaling":
-            raise ValueError("disabled normalization state fields are invalid")
-        return state
-
-    expected = common | {
-        "epsilon",
-        "clip",
-        "warmup_steps",
-        "environment_samples",
-        "active_agent_samples",
-        "groups",
-    }
-    if set(state) != expected:
-        raise ValueError("enabled normalization state fields are incomplete or unexpected")
-    if state["contract"] != "frozen_active_critic_group_standardization":
-        raise ValueError("enabled normalization contract is invalid")
-    for name in ("epsilon", "clip"):
-        value = state[name]
-        if type(value) not in (int, float) or not math.isfinite(value) or value <= 0:
-            raise ValueError(f"normalization {name} must be finite and positive")
-    for name in ("warmup_steps", "environment_samples", "active_agent_samples"):
-        if type(state[name]) is not int or state[name] < 1:
-            raise ValueError(f"normalization {name} must be a positive integer")
-    groups = state["groups"]
-    if not isinstance(groups, dict) or set(groups) != set(GROUP_SLICES):
-        raise ValueError("normalization group names are invalid")
-    for name, values in groups.items():
-        if not isinstance(values, dict) or set(values) != {"count", "mean", "variance"}:
-            raise ValueError(f"normalization group state is invalid: {name}")
-        if type(values["count"]) is not int or values["count"] < 1:
-            raise ValueError(f"normalization group count is invalid: {name}")
-        if values["count"] != state["active_agent_samples"] * 3:
-            raise ValueError(f"normalization group count does not match active samples: {name}")
-        if any(
-            type(values[field]) not in (int, float) or not math.isfinite(values[field])
-            for field in ("mean", "variance")
-        ):
-            raise ValueError(f"normalization group moments are not finite: {name}")
-        if values["variance"] < 0:
-            raise ValueError(f"normalization group variance is negative: {name}")
-    return state
 
 
 def normalization_matches_config(state: dict, config: CriticNormalizationConfig) -> bool:
@@ -93,6 +41,7 @@ def normalization_matches_config(state: dict, config: CriticNormalizationConfig)
         state["warmup_steps"] == config.warmup_steps
         and state["epsilon"] == config.epsilon
         and state["clip"] == config.clip
+        and float(state.get("minimum_standard_deviation", 0.0)) == config.minimum_standard_deviation
     )
 
 
@@ -175,9 +124,13 @@ class CriticGroupAccumulator:
                 "variance": max(0.0, variance),
             }
         state = {
-            "schema_version": NORMALIZATION_SCHEMA_VERSION,
+            "schema_version": config.schema_version,
             "enabled": True,
-            "contract": "frozen_active_critic_group_standardization",
+            "contract": (
+                "frozen_active_critic_group_standardization_with_floor"
+                if config.schema_version == 2
+                else "frozen_active_critic_group_standardization"
+            ),
             "frozen": True,
             "epsilon": config.epsilon,
             "clip": config.clip,
@@ -186,6 +139,8 @@ class CriticGroupAccumulator:
             "active_agent_samples": self.active_agent_samples,
             "groups": groups,
         }
+        if config.schema_version == 2:
+            state["minimum_standard_deviation"] = config.minimum_standard_deviation
         return validate_normalization_state(state)
 
 
@@ -212,7 +167,7 @@ class FrozenCriticGroupNormalizer:
         active = masks.bool()
         for name, group_slice in GROUP_SLICES.items():
             moments = self.state["groups"][name]
-            denominator = math.sqrt(max(moments["variance"], self.state["epsilon"] ** 2))
+            _, denominator = normalization_standard_deviation(self.state, name)
             group = features[..., group_slice]
             transformed = ((group - moments["mean"]) / denominator).clamp(
                 -self.state["clip"], self.state["clip"]
@@ -253,19 +208,24 @@ def summarize_critic_rollout_distribution(
         standard_deviation = float(values.std(unbiased=False).item())
         if normalization["enabled"]:
             moments = normalization["groups"][name]
-            warmup_std = math.sqrt(max(moments["variance"], normalization["epsilon"] ** 2))
-            before_clip = (values - moments["mean"]) / warmup_std
+            warmup_std, denominator = normalization_standard_deviation(normalization, name)
+            before_clip = (values - moments["mean"]) / denominator
             clipped = before_clip.abs() > normalization["clip"]
             warmup_mean = moments["mean"]
             mean_shift = (mean - warmup_mean) / warmup_std
             std_ratio = standard_deviation / warmup_std
+            effective_mean_shift = (mean - warmup_mean) / denominator
+            effective_std_ratio = standard_deviation / denominator
         else:
             before_clip = values
             clipped = torch.zeros_like(values, dtype=torch.bool)
             warmup_mean = 0.0
             warmup_std = 1.0
+            denominator = 1.0
             mean_shift = 0.0
             std_ratio = 1.0
+            effective_mean_shift = 0.0
+            effective_std_ratio = 1.0
         transformed = (
             before_clip.clamp(-normalization["clip"], normalization["clip"])
             if normalization["enabled"]
@@ -281,8 +241,11 @@ def summarize_critic_rollout_distribution(
             "raw_maximum": float(values.max().item()),
             "warmup_mean": warmup_mean,
             "warmup_standard_deviation": warmup_std,
+            "normalization_standard_deviation": denominator,
             "mean_shift_warmup_standard_deviations": mean_shift,
             "raw_standard_deviation_ratio": std_ratio,
+            "mean_shift_normalization_standard_deviations": effective_mean_shift,
+            "raw_standard_deviation_normalization_ratio": effective_std_ratio,
             "normalized_mean": float(transformed.mean().item()),
             "normalized_standard_deviation": float(transformed.std(unbiased=False).item()),
             "normalized_minimum": float(transformed.min().item()),

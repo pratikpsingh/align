@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "policy_seeds": [41, 73],
+  "expected_updates_per_seed": 10,
+  "candidate_minimum_standard_deviations": [0.015, 0.02, 0.025, 0.03],
+  "max_absolute_effective_mean_shift": 1.5,
+  "max_effective_standard_deviation_ratio": 1.5
+}

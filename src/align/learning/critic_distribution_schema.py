@@ -7,7 +7,7 @@ import math
 from pathlib import Path
 
 GROUPS = ("position", "velocity", "target")
-MEASUREMENTS = (
+LEGACY_MEASUREMENTS = (
     "raw_mean",
     "raw_standard_deviation",
     "raw_minimum",
@@ -20,6 +20,22 @@ MEASUREMENTS = (
     "normalized_standard_deviation",
     "normalized_minimum",
     "normalized_maximum",
+    "clipped_fraction",
+)
+MEASUREMENTS = (
+    *LEGACY_MEASUREMENTS[:6],
+    "normalization_standard_deviation",
+    *LEGACY_MEASUREMENTS[6:8],
+    "mean_shift_normalization_standard_deviations",
+    "raw_standard_deviation_normalization_ratio",
+    *LEGACY_MEASUREMENTS[8:],
+)
+LEGACY_COLUMNS = (
+    "completed_update",
+    "group",
+    "count",
+    *LEGACY_MEASUREMENTS[:-1],
+    "clipped_count",
     "clipped_fraction",
 )
 COLUMNS = (
@@ -40,11 +56,20 @@ def validate_critic_distribution_rows(
         return False
     try:
         for row in rows:
-            if set(row) != set(COLUMNS) or int(row["completed_update"]) != update:
+            columns = tuple(row)
+            if set(columns) == set(COLUMNS):
+                measurements = MEASUREMENTS
+                has_effective_denominator = True
+            elif set(columns) == set(LEGACY_COLUMNS):
+                measurements = LEGACY_MEASUREMENTS
+                has_effective_denominator = False
+            else:
+                return False
+            if int(row["completed_update"]) != update:
                 return False
             count = int(row["count"])
             clipped = int(row["clipped_count"])
-            values = {name: float(row[name]) for name in MEASUREMENTS}
+            values = {name: float(row[name]) for name in measurements}
             if count != scalar_count or not 0 <= clipped <= count:
                 return False
             if not all(math.isfinite(value) for value in values.values()):
@@ -60,6 +85,11 @@ def validate_critic_distribution_rows(
             if (
                 values["warmup_standard_deviation"] <= 0
                 or values["raw_standard_deviation_ratio"] < 0
+            ):
+                return False
+            if has_effective_denominator and (
+                values["normalization_standard_deviation"] < values["warmup_standard_deviation"]
+                or values["raw_standard_deviation_normalization_ratio"] < 0
             ):
                 return False
             if values["raw_minimum"] < -1.000001 or values["raw_maximum"] > 1.000001:
@@ -85,7 +115,7 @@ def read_valid_critic_distribution(
         return None
     with path.open(newline="", encoding="utf-8") as stream:
         reader = csv.DictReader(stream)
-        if tuple(reader.fieldnames or ()) != COLUMNS:
+        if tuple(reader.fieldnames or ()) not in (LEGACY_COLUMNS, COLUMNS):
             return None
         rows = list(reader)
     if not validate_critic_distribution_rows(

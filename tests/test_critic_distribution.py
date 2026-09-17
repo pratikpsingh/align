@@ -30,8 +30,11 @@ def row(group: str, *, update: int = 1, count: int = 48, clipped: int = 0) -> di
         "raw_maximum": 0.5,
         "warmup_mean": 0.0,
         "warmup_standard_deviation": 0.2,
+        "normalization_standard_deviation": 0.25,
         "mean_shift_warmup_standard_deviations": 0.5,
         "raw_standard_deviation_ratio": 1.0,
+        "mean_shift_normalization_standard_deviations": 0.4,
+        "raw_standard_deviation_normalization_ratio": 0.8,
         "normalized_mean": 0.5,
         "normalized_standard_deviation": 1.0,
         "normalized_minimum": -1.5,
@@ -94,6 +97,8 @@ class CriticDistributionTrendTests(unittest.TestCase):
                         "clipped_fraction": update / 100 + seed / 10000,
                         "mean_shift_warmup_standard_deviations": update / 10,
                         "raw_standard_deviation_ratio": 1 + update / 100,
+                        "mean_shift_normalization_standard_deviations": update / 20,
+                        "raw_standard_deviation_normalization_ratio": 0.5 + update / 100,
                     }
                     for group in GROUPS
                 ]
@@ -148,7 +153,13 @@ class CriticDistributionTrendTests(unittest.TestCase):
             output = Path(directory)
             write_learning_curve_tables(output, summary)
             lines = (output / "critic-distribution-curve.csv").read_text().splitlines()
-        self.assertEqual(len(lines), 1 + 10 * 3 * 3)
+        self.assertEqual(len(lines), 1 + 10 * 3 * 5)
+        self.assertAlmostEqual(
+            summary["critic_distribution_trends"][0][
+                "mean_shift_normalization_standard_deviations"
+            ]["mean"],
+            0.05,
+        )
 
         del items[1]["train"]["metrics"]["measurements"][0]["critic_distribution"]
         with self.assertRaisesRegex(ValueError, "missing from some updates"):

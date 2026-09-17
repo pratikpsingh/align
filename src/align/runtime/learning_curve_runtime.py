@@ -126,19 +126,34 @@ def summarize_learning_curve(items: list[dict], config: LearningCurveConfig) -> 
                     if len(matches) != 1:
                         raise ValueError(f"update {update} lacks exactly one {group} group")
                     group_rows.append(matches[0])
-                distribution_trends.append(
-                    {
-                        "completed_update": update,
-                        "group": group,
-                        "clipped_fraction": _bounds(group_rows, "clipped_fraction"),
-                        "mean_shift_warmup_standard_deviations": _bounds(
-                            group_rows, "mean_shift_warmup_standard_deviations"
+                effective_presence = [
+                    "mean_shift_normalization_standard_deviations" in item
+                    and "raw_standard_deviation_normalization_ratio" in item
+                    for item in group_rows
+                ]
+                if any(effective_presence) and not all(effective_presence):
+                    raise ValueError("effective critic scale metrics are missing from some seeds")
+                trend = {
+                    "completed_update": update,
+                    "group": group,
+                    "clipped_fraction": _bounds(group_rows, "clipped_fraction"),
+                    "mean_shift_warmup_standard_deviations": _bounds(
+                        group_rows, "mean_shift_warmup_standard_deviations"
+                    ),
+                    "raw_standard_deviation_ratio": _bounds(
+                        group_rows, "raw_standard_deviation_ratio"
+                    ),
+                }
+                if all(effective_presence):
+                    trend.update(
+                        mean_shift_normalization_standard_deviations=_bounds(
+                            group_rows, "mean_shift_normalization_standard_deviations"
                         ),
-                        "raw_standard_deviation_ratio": _bounds(
-                            group_rows, "raw_standard_deviation_ratio"
+                        raw_standard_deviation_normalization_ratio=_bounds(
+                            group_rows, "raw_standard_deviation_normalization_ratio"
                         ),
-                    }
-                )
+                    )
+                distribution_trends.append(trend)
 
     return {
         "seed_count": len(items),
@@ -204,11 +219,19 @@ def write_learning_curve_tables(run: Path, summary: dict) -> None:
             )
             writer.writeheader()
             for row in summary["critic_distribution_trends"]:
-                for metric in (
+                metrics = [
                     "clipped_fraction",
                     "mean_shift_warmup_standard_deviations",
                     "raw_standard_deviation_ratio",
-                ):
+                ]
+                if "mean_shift_normalization_standard_deviations" in row:
+                    metrics.extend(
+                        (
+                            "mean_shift_normalization_standard_deviations",
+                            "raw_standard_deviation_normalization_ratio",
+                        )
+                    )
+                for metric in metrics:
                     writer.writerow(
                         {
                             "completed_update": row["completed_update"],
