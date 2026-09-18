@@ -46,7 +46,10 @@ Start here, then follow the numbered files in order. The prefixes describe readi
 39. [Flight-phase contact termination](39-flight-contact-termination.md): contact guard after takeoff, reason-code compatibility, and simulator acceptance.
 40. [Fixed-ID group waypoint routes](40-waypoint-route-contract.md): route geometry, all-drone advancement, simulator reference command, raw audit, and accepted 3 m physical comparison.
 41. [Nonnegative policy speed coordinate](41-nonnegative-policy-speed.md): one-bound action experiment, matched training commands, and interpretation limits.
-42. [Contact detection after takeoff begins](42-takeoff-contact-latch.md): per-drone airborne latch, reset semantics, CPU checks, and pending physical acceptance.
-43. [Eight-drone plane reference](43-eight-drone-reference.md): explicit size-eight construction config, CPU feasibility checks, and pending physical acceptance.
+42. [Contact detection after takeoff begins](42-takeoff-contact-latch.md): per-drone airborne latch, reset semantics, CPU checks, and physical acceptance.
+43. [Eight-drone plane reference](43-eight-drone-reference.md): explicit size-eight construction config, CPU feasibility checks, and accepted physical reference.
+44. [Matched takeoff controller replay](44-takeoff-controller-replay.md): exact saved commands, isolated and downwash interventions, raw actuator/force traces, and lab command.
+45. [Local wake-clearance command probe](45-local-wake-clearance.md): bounded local escape rule, one-arm physical replay, raw audit, and acceptance criteria.
+46. [Frozen-policy wake-guard evaluation](46-frozen-policy-wake-guard.md): live actor feedback, paired replay and raw comparison protocol.
 
 For beginner explanations, begin with the [learning index](../learning/00-README.md). For research scope and intended implementation, use the [planning index](../plans/00-README.md). Setup instructions distinguish CPU contracts, implemented simulator behavior, and pending research validation.

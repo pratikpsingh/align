@@ -61,6 +61,7 @@ def run_main(argv=None) -> int:
         checkpoint_sha256=source_report["checkpoint_sha256"],
         source_config_sha256=digest(config_path),
         source_status=source_report["status"],
+        wake_guard_enabled=source_report.get("wake_guard_enabled", False),
         capture_mode="early_safety_termination" if early_contact_capture else "standard",
     )
     try:
@@ -70,6 +71,7 @@ def run_main(argv=None) -> int:
             num_agents=config["construction"]["num_agents"],
             max_speed_m_s=config["construction"]["max_speed_m_s"],
             reward_config=config["reward"],
+            wake_guard=source_report.get("wake_guard_enabled", False),
         )
         report["analysis"] = summarize_telemetry(
             evaluation / "policy-telemetry.csv",

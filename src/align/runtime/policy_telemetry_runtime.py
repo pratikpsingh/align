@@ -40,6 +40,7 @@ def replay_command(
     source_identity: str,
     output_label: str = "evaluation",
     timing_config: str | None = None,
+    wake_guard: bool = False,
 ) -> list[str]:
     if output_label not in {"evaluation", "baseline", "extended"}:
         raise ValueError("unsupported replay output label")
@@ -92,6 +93,7 @@ def replay_command(
         "--evaluation-update",
         str(update),
         "--policy-telemetry",
+        *(["--wake-guard"] if wake_guard else []),
         *(["--evaluation-timing-config", timing_config] if timing_config else []),
     ]
 
@@ -138,6 +140,7 @@ def run_main(argv=None) -> int:
     parser.add_argument("--gpu", type=int, default=0)
     parser.add_argument("--timeout", type=int, default=1200)
     parser.add_argument("--accept-eula", action="store_true")
+    parser.add_argument("--wake-guard", action="store_true")
     args = parser.parse_args(argv)
     if (
         not args.accept_eula
@@ -165,6 +168,12 @@ def run_main(argv=None) -> int:
     seed_directory = source / f"seed-{args.policy_seed:010d}"
     config_path = seed_directory / "config.json"
     resolved = json.loads(config_path.read_text())
+    if args.wake_guard and (
+        resolved["construction"]["num_agents"] != 4
+        or resolved["observation"]["neighbor_radius_m"] != 1.5
+        or resolved["construction"]["max_speed_m_s"] != 0.5
+    ):
+        raise ValueError("wake guard requires the four-drone, 1.5 m-radius, 0.5 m/s contract")
     store = CheckpointStore(
         seed_directory / "checkpoints",
         run_id=f"{source.name}-seed-{args.policy_seed:010d}",
@@ -204,6 +213,7 @@ def run_main(argv=None) -> int:
         system=probe_system().details,
         host_gpu_index=args.gpu,
         training_performed=False,
+        wake_guard_enabled=args.wake_guard,
         optimizer_updates=0,
         scientific_result=False,
     )
@@ -228,6 +238,7 @@ def run_main(argv=None) -> int:
         update=args.evaluation_update,
         num_envs=resolved["rollout"]["num_envs"],
         source_identity=source_identity,
+        wake_guard=args.wake_guard,
     )
     report["command"] = command
     write_json_atomic(run / "report.json", report)
@@ -263,6 +274,7 @@ def run_main(argv=None) -> int:
         if (
             metrics["checkpoint_id"] != manifest["checkpoint_id"]
             or metrics["optimizer_updates"] != 0
+            or metrics["wake_guard_enabled"] is not args.wake_guard
         ):
             raise RuntimeError("checkpoint lineage or frozen-policy contract changed")
         report["telemetry_audit"] = audit_telemetry(
@@ -271,7 +283,15 @@ def run_main(argv=None) -> int:
             num_agents=resolved["construction"]["num_agents"],
             max_speed_m_s=resolved["construction"]["max_speed_m_s"],
             reward_config=resolved["reward"],
+            wake_guard=args.wake_guard,
         )
+        if (
+            metrics["wake_guard_active_steps"]
+            != report["telemetry_audit"]["wake_guard_active_steps"]
+            or metrics["wake_guard_unresolved_steps"]
+            != report["telemetry_audit"]["wake_guard_unresolved_steps"]
+        ):
+            raise RuntimeError("simulator and raw wake guard counts differ")
         report["airborne_contact_audit"] = audit_airborne_contacts(
             output / "policy-telemetry.csv",
             output / "evaluation.csv",

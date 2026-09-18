@@ -38,6 +38,13 @@ TELEMETRY_COLUMNS = (
     "team_reward",
     "contact_force_n",
 )
+GUARDED_TELEMETRY_COLUMNS = TELEMETRY_COLUMNS + (
+    "requested_vx_m_s",
+    "requested_vy_m_s",
+    "requested_vz_m_s",
+    "wake_guard_active",
+    "wake_guard_unresolved",
+)
 
 
 def audit_telemetry(
@@ -48,6 +55,7 @@ def audit_telemetry(
     max_speed_m_s: float,
     tolerance: float = 3e-4,
     reward_config: dict | None = None,
+    wake_guard: bool = False,
 ) -> dict:
     """Cross-check each raw drone transition against aggregate evaluation rows."""
     if num_agents < 2 or max_speed_m_s <= 0 or tolerance <= 0:
@@ -59,7 +67,8 @@ def audit_telemetry(
     groups: dict[tuple[int, int], list[dict]] = defaultdict(list)
     with telemetry_path.open(newline="", encoding="utf-8") as stream:
         reader = csv.DictReader(stream)
-        if tuple(reader.fieldnames or ()) != TELEMETRY_COLUMNS:
+        columns = GUARDED_TELEMETRY_COLUMNS if wake_guard else TELEMETRY_COLUMNS
+        if tuple(reader.fieldnames or ()) != columns:
             raise ValueError("telemetry schema mismatch")
         for row in reader:
             groups[int(row["evaluation_step"]), int(row["env_id"])].append(row)
@@ -69,11 +78,44 @@ def audit_telemetry(
     aligned_commands = 0
     nonzero_commands = 0
     closing_velocity = 0
+    guard_active_steps = 0
+    guard_unresolved_steps = 0
     for key, rows in groups.items():
         reference = aggregate[key]
         if len(rows) != num_agents or {int(r["agent_id"]) for r in rows} != set(range(num_agents)):
             raise ValueError(f"missing or duplicate agents at {key}")
         positions, targets, rewards = [], [], []
+        rows.sort(key=lambda row: int(row["agent_id"]))
+        expected_guard_command = None
+        guard_details = {"active": False, "unresolved": False}
+        if wake_guard:
+            from align.tasks.wake_guard import guard_focal_command
+
+            if num_agents != 4:
+                raise ValueError("wake guard telemetry requires four agents")
+            pre_positions = tuple(
+                tuple(float(row[f"pre_{axis}_m"]) for axis in "xyz") for row in rows
+            )
+            requests = []
+            for row in rows:
+                action_values = [float(row[f"action_{i}"]) for i in range(4)]
+                length = math.sqrt(math.fsum(value * value for value in action_values[:3]))
+                requests.append(
+                    tuple(
+                        value / length * abs(action_values[3]) * max_speed_m_s
+                        if length > 1e-8
+                        else 0.0
+                        for value in action_values[:3]
+                    )
+                )
+            if rows[0]["phase"] == "takeoff":
+                expected_guard_command, guard_details = guard_focal_command(
+                    pre_positions, tuple(requests), 2
+                )
+            else:
+                expected_guard_command = requests[2]
+            guard_active_steps += int(guard_details["active"])
+            guard_unresolved_steps += int(guard_details["unresolved"])
         for row in rows:
             if (row["phase"], row["formation_kind"], row["episode_step"]) != (
                 reference["phase"],
@@ -82,9 +124,7 @@ def audit_telemetry(
             ):
                 raise ValueError(f"phase or template mismatch at {key}")
             values = [
-                float(row[name])
-                for name in TELEMETRY_COLUMNS
-                if name not in {"phase", "formation_kind"}
+                float(row[name]) for name in columns if name not in {"phase", "formation_kind"}
             ]
             if not all(math.isfinite(v) for v in values):
                 raise ValueError(f"nonfinite telemetry at {key}")
@@ -114,6 +154,21 @@ def audit_telemetry(
                 a / norm * abs(action[3]) * max_speed_m_s if norm > 1e-8 else 0.0
                 for a in action[:3]
             )
+            if wake_guard:
+                requested = tuple(float(row[f"requested_v{axis}_m_s"]) for axis in "xyz")
+                if (
+                    max(abs(a - b) for a, b in zip(expected_command, requested, strict=True))
+                    > tolerance
+                ):
+                    raise ValueError(f"action-to-request mismatch at {key}")
+                agent_id = int(row["agent_id"])
+                expected_command = expected_guard_command if agent_id == 2 else expected_command
+                if int(float(row["wake_guard_active"])) != (
+                    int(guard_details["active"]) if agent_id == 2 else 0
+                ) or int(float(row["wake_guard_unresolved"])) != (
+                    int(guard_details["unresolved"]) if agent_id == 2 else 0
+                ):
+                    raise ValueError(f"wake guard flag mismatch at {key}")
             if (
                 max(abs(a - b) for a, b in zip(expected_command, vectors["command"], strict=True))
                 > tolerance
@@ -174,6 +229,9 @@ def audit_telemetry(
         if nonzero_commands
         else None,
         "reward_and_geometry_recomputed": True,
+        "wake_guard_enabled": wake_guard,
+        "wake_guard_active_steps": guard_active_steps,
+        "wake_guard_unresolved_steps": guard_unresolved_steps,
     }
 
 
@@ -201,7 +259,7 @@ def audit_airborne_contacts(
     drone_rows = 0
     with telemetry_path.open(newline="", encoding="utf-8") as stream:
         reader = csv.DictReader(stream)
-        if tuple(reader.fieldnames or ()) != TELEMETRY_COLUMNS:
+        if tuple(reader.fieldnames or ()) not in (TELEMETRY_COLUMNS, GUARDED_TELEMETRY_COLUMNS):
             raise ValueError("telemetry schema mismatch")
         for row in reader:
             drone_rows += 1
@@ -289,7 +347,7 @@ def summarize_telemetry(
     first_formation: dict[tuple[int, int], dict] = {}
     with telemetry_path.open(newline="", encoding="utf-8") as stream:
         reader = csv.DictReader(stream)
-        if tuple(reader.fieldnames or ()) != TELEMETRY_COLUMNS:
+        if tuple(reader.fieldnames or ()) not in (TELEMETRY_COLUMNS, GUARDED_TELEMETRY_COLUMNS):
             raise ValueError("telemetry schema mismatch")
         for row in reader:
             phase = row["phase"]

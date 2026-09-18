@@ -270,6 +270,9 @@ def run(
     training_stop_update: int | None = None,
     fault_at_update: int | None = None,
     fault_after_rollout_step: int | None = None,
+    replay_trace: Path | None = None,
+    replay_arm: str | None = None,
+    wake_guard: bool = False,
 ):
     started = time.perf_counter()
     (
@@ -293,6 +296,26 @@ def run(
         raise ValueError("num_envs must be one or the configured probe batch")
     if scenario == "single" and num_envs != 1:
         raise ValueError("single scenario requires one environment")
+    if scenario == "takeoff-replay":
+        if (
+            num_envs != 1
+            or replay_trace is None
+            or replay_arm not in ("four", "isolated", "no_downwash", "wake_guard")
+        ):
+            raise ValueError("takeoff replay requires one world, a trace, and a declared arm")
+    elif replay_trace is not None or replay_arm is not None:
+        raise ValueError("replay trace and arm are valid only for takeoff replay")
+    if wake_guard and (
+        scenario != "evaluation"
+        or not policy_telemetry
+        or construction.num_agents != 4
+        or observation.neighbor_radius_m != 1.5
+        or construction.max_speed_m_s != 0.5
+    ):
+        raise ValueError(
+            "wake guard evaluation requires telemetry, four drones, "
+            "the 1.5 m actor radius, and 0.5 m/s commands"
+        )
     if (
         scenario
         in (
@@ -382,6 +405,7 @@ def run(
         "evaluation",
         "reference",
         "critic-calibration",
+        "takeoff-replay",
     ) and any(value is not None for value in (policy, rollout, collector, ppo, recovery, training)):
         raise ValueError("learner sections are valid only for collector or training scenarios")
 
@@ -399,6 +423,7 @@ def run(
     }
     result["started_at_ist"] = as_ist(result["started_at_utc"])
     result["evaluation_timing"] = timing_details
+    result["wake_guard_enabled"] = wake_guard
     result["shape_transition_plan"] = transition_plan
     result["shape_transition_physics_tested"] = False
     result["waypoint_route_plan"] = route_plan.to_dict() if route_plan is not None else None
@@ -451,6 +476,9 @@ def run(
             def __init__(self, cfg):
                 self.output = output
                 self.construction_cfg = construction
+                self.wake_guard_enabled = wake_guard
+                self.wake_guard_interventions = 0
+                self.wake_guard_unresolved = 0
                 self.observation_cfg = observation
                 self.reward_cfg = reward
                 self.task_cfg = task
@@ -838,7 +866,32 @@ def run(
                     torch.zeros_like(direction),
                 )
                 speed = actions[..., 3:4].abs() * construction.max_speed_m_s
-                self.commanded_velocities = unit * speed
+                self.requested_velocities = unit * speed
+                self.commanded_velocities = self.requested_velocities.clone()
+                self.last_guard_active = torch.zeros(num_envs, dtype=torch.bool, device=self.device)
+                self.last_guard_unresolved = torch.zeros(
+                    num_envs, dtype=torch.bool, device=self.device
+                )
+                if self.wake_guard_enabled:
+                    from align.tasks.wake_guard import guard_focal_command
+
+                    positions_cpu = self.state[..., :3].cpu().tolist()
+                    requested_cpu = self.requested_velocities.cpu().tolist()
+                    for env_id in range(num_envs):
+                        if int(self.last_reward_phase[env_id].item()) != 1:
+                            continue
+                        guarded, details = guard_focal_command(
+                            tuple(tuple(point) for point in positions_cpu[env_id]),
+                            tuple(tuple(command) for command in requested_cpu[env_id]),
+                            2,
+                        )
+                        self.commanded_velocities[env_id, 2] = torch.tensor(
+                            guarded, device=self.device, dtype=torch.float32
+                        )
+                        self.last_guard_active[env_id] = details["active"]
+                        self.last_guard_unresolved[env_id] = details["unresolved"]
+                        self.wake_guard_interventions += int(details["active"])
+                        self.wake_guard_unresolved += int(details["unresolved"])
                 self.last_actions = actions
                 raw = self.controller.compute(
                     self.state[..., :13],
@@ -1266,6 +1319,23 @@ def run(
             and torch.isfinite(initial[("agents", "state")]).all()
         )
         event("initial_reset", reset_error=reset_error)
+
+        if scenario == "takeoff-replay":
+            from align.simulation.takeoff_replay import run_takeoff_replay
+
+            metrics = run_takeoff_replay(
+                env=env, trace_path=replay_trace, output=output, arm=replay_arm, event=event
+            )
+            result.update(
+                status=metrics["status"],
+                drone_physics_tested=True,
+                vector_task_physics_tested=True,
+                takeoff_replay_tested=True,
+                optimizer_updates=0,
+                agent_steps=metrics["agent_rows"],
+                torch_peak_allocated_bytes=torch.cuda.max_memory_allocated(),
+            )
+            return 0 if result["status"] == "passed" else 1
 
         if scenario == "critic-calibration":
             from align.simulation.task_training import run_training_attempt
@@ -1778,6 +1848,7 @@ def main(argv=None):
             "evaluation",
             "reference",
             "critic-calibration",
+            "takeoff-replay",
         ),
         required=True,
     )
@@ -1787,6 +1858,9 @@ def main(argv=None):
     parser.add_argument("--checkpoint-directory", type=Path)
     parser.add_argument("--evaluation-update", type=int)
     parser.add_argument("--policy-telemetry", action="store_true")
+    parser.add_argument("--wake-guard", action="store_true")
+    parser.add_argument("--replay-trace", type=Path)
+    parser.add_argument("--replay-arm", choices=("four", "isolated", "no_downwash", "wake_guard"))
     parser.add_argument("--evaluation-timing-config", type=Path)
     parser.add_argument("--shape-transition-config", type=Path)
     parser.add_argument("--waypoint-route-config", type=Path)
@@ -1819,6 +1893,9 @@ def main(argv=None):
         training_stop_update=args.training_stop_update,
         fault_at_update=args.fault_at_update,
         fault_after_rollout_step=args.fault_after_rollout_step,
+        replay_trace=args.replay_trace,
+        replay_arm=args.replay_arm,
+        wake_guard=args.wake_guard,
     )
 
 

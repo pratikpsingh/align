@@ -24,7 +24,11 @@ from align.learning.training_config import TaskTrainingConfig
 from align.policies.config import RecurrentPolicyConfig
 from align.policies.torch_recurrent import CentralizedRecurrentCritic, SharedRecurrentActor
 from align.simulation.recurrent_collector import zero_done_actor_memory
-from align.tasks.policy_telemetry import TELEMETRY_COLUMNS, VECTOR_FIELDS
+from align.tasks.policy_telemetry import (
+    GUARDED_TELEMETRY_COLUMNS,
+    TELEMETRY_COLUMNS,
+    VECTOR_FIELDS,
+)
 from align.tasks.reward import COMPONENT_NAMES
 
 EVALUATION_COLUMNS = (
@@ -99,6 +103,19 @@ def write_telemetry_rows(
                     f"{prefix}_{name}": float(value)
                     for name, value in zip(COMPONENT_NAMES, values, strict=True)
                 }
+            )
+        if env.wake_guard_enabled:
+            requested = env.requested_velocities[env_id, agent_id].tolist()
+            row.update(
+                zip(
+                    ("requested_vx_m_s", "requested_vy_m_s", "requested_vz_m_s"),
+                    requested,
+                    strict=True,
+                )
+            )
+            row["wake_guard_active"] = int(agent_id == 2 and env.last_guard_active[env_id].item())
+            row["wake_guard_unresolved"] = int(
+                agent_id == 2 and env.last_guard_unresolved[env_id].item()
             )
         writer.writerow(row)
     return env.construction_cfg.num_agents
@@ -207,7 +224,8 @@ def run_policy_evaluation(
             telemetry_stream = stack.enter_context(
                 (output / "policy-telemetry.csv").open("x", newline="", encoding="utf-8")
             )
-            telemetry_writer = csv.DictWriter(telemetry_stream, fieldnames=TELEMETRY_COLUMNS)
+            columns = GUARDED_TELEMETRY_COLUMNS if env.wake_guard_enabled else TELEMETRY_COLUMNS
+            telemetry_writer = csv.DictWriter(telemetry_stream, fieldnames=columns)
             telemetry_writer.writeheader()
         with torch.no_grad():
             for step in range(stability_config.evaluation_steps):
@@ -377,6 +395,9 @@ def run_policy_evaluation(
         "evaluation_steps": stability_config.evaluation_steps,
         "raw_rows": raw_rows,
         "telemetry_rows": telemetry_rows,
+        "wake_guard_enabled": env.wake_guard_enabled,
+        "wake_guard_active_steps": env.wake_guard_interventions,
+        "wake_guard_unresolved_steps": env.wake_guard_unresolved,
         "phase_rows": phase_rows,
         "formation_phase_reached": phase_rows["formation"] > 0,
         "outcome_counts": outcome_counts,
