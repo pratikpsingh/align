@@ -28,6 +28,7 @@ from align.policies.config import RecurrentPolicyConfig
 from align.simulation.assets import localize_materials
 from align.simulation.multi_drone_contract import MultiDroneConfig, build_group_layout
 from align.tasks.environment import TaskEnvironmentConfig
+from align.tasks.evaluation_timing import EvaluationTimingConfig, apply_evaluation_timing
 from align.tasks.formation_schedule import FormationScheduleConfig
 from align.tasks.observation import ObservationConfig, build_observations
 from align.tasks.reward import RewardConfig, RewardMemory, compute_step_reward
@@ -259,6 +260,7 @@ def run(
     runtime_identity: str | None = None,
     evaluation_update: int | None = None,
     policy_telemetry: bool = False,
+    evaluation_timing_config: Path | None = None,
     training_start_update: int = 0,
     training_stop_update: int | None = None,
     fault_at_update: int | None = None,
@@ -288,7 +290,15 @@ def run(
         raise ValueError("single scenario requires one environment")
     if (
         scenario
-        in ("batch", "collector", "training", "stability", "evaluation", "critic-calibration")
+        in (
+            "batch",
+            "collector",
+            "training",
+            "stability",
+            "evaluation",
+            "reference",
+            "critic-calibration",
+        )
         and num_envs != task.num_envs
     ):
         raise ValueError(f"{scenario} scenario requires the configured environment count")
@@ -310,6 +320,15 @@ def run(
         raise ValueError("evaluation_update must be a nonnegative integer used only for evaluation")
     if policy_telemetry and scenario != "evaluation":
         raise ValueError("policy telemetry is valid only for evaluation")
+    if evaluation_timing_config is not None and scenario not in ("evaluation", "reference"):
+        raise ValueError("evaluation timing override is valid only for evaluation or reference")
+    timing_details = None
+    if evaluation_timing_config is not None:
+        timing = EvaluationTimingConfig.from_dict(json.loads(evaluation_timing_config.read_text()))
+        construction, task, stability, timing_details = apply_evaluation_timing(
+            timing, construction, task, stability
+        )
+        task.validate_compatibility(construction, observation, reward)
     if scenario != "stability" and (training_start_update != 0 or training_stop_update is not None):
         raise ValueError("training update ranges are valid only for stability")
     if (fault_at_update is None) != (fault_after_rollout_step is None):
@@ -334,6 +353,7 @@ def run(
         "training",
         "stability",
         "evaluation",
+        "reference",
         "critic-calibration",
     ) and any(value is not None for value in (policy, rollout, collector, ppo, recovery, training)):
         raise ValueError("learner sections are valid only for collector or training scenarios")
@@ -351,6 +371,7 @@ def run(
         "vector_task_physics_tested": False,
     }
     result["started_at_ist"] = as_ist(result["started_at_utc"])
+    result["evaluation_timing"] = timing_details
     app = None
 
     def event(name, **details):
@@ -1145,6 +1166,32 @@ def run(
             event("stability_training_finished", status=result["status"], checks=metrics["checks"])
             return 0 if result["status"] == "passed" else 1
 
+        if scenario == "reference":
+            from align.simulation.reference_evaluation import run_reference_evaluation
+
+            metrics = run_reference_evaluation(
+                env=env,
+                output=output,
+                evaluation_steps=stability.evaluation_steps
+                if stability
+                else task.max_episode_steps,
+                event=event,
+            )
+            save_json(output / "metrics.json", metrics)
+            result.update(
+                status=metrics["status"],
+                drone_physics_tested=True,
+                vector_task_physics_tested=True,
+                reference_evaluation_tested=True,
+                optimizer_updates=0,
+                agent_steps=metrics["telemetry_rows"],
+                torch_peak_allocated_bytes=torch.cuda.max_memory_allocated(),
+            )
+            event(
+                "reference_evaluation_finished", status=result["status"], checks=metrics["checks"]
+            )
+            return 0 if result["status"] == "passed" else 1
+
         if scenario == "evaluation":
             from align.simulation.policy_evaluation import run_policy_evaluation
 
@@ -1539,6 +1586,7 @@ def main(argv=None):
             "training",
             "stability",
             "evaluation",
+            "reference",
             "critic-calibration",
         ),
         required=True,
@@ -1549,6 +1597,7 @@ def main(argv=None):
     parser.add_argument("--checkpoint-directory", type=Path)
     parser.add_argument("--evaluation-update", type=int)
     parser.add_argument("--policy-telemetry", action="store_true")
+    parser.add_argument("--evaluation-timing-config", type=Path)
     parser.add_argument("--training-start-update", type=int, default=0)
     parser.add_argument("--training-stop-update", type=int)
     parser.add_argument("--fault-at-update", type=int)
@@ -1571,6 +1620,7 @@ def main(argv=None):
         runtime_identity=args.runtime_identity,
         evaluation_update=args.evaluation_update,
         policy_telemetry=args.policy_telemetry,
+        evaluation_timing_config=args.evaluation_timing_config,
         training_start_update=args.training_start_update,
         training_stop_update=args.training_stop_update,
         fault_at_update=args.fault_at_update,

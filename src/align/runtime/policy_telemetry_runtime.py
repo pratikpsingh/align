@@ -38,7 +38,11 @@ def replay_command(
     update: int,
     num_envs: int,
     source_identity: str,
+    output_label: str = "evaluation",
+    timing_config: str | None = None,
 ) -> list[str]:
+    if output_label not in {"evaluation", "baseline", "extended"}:
+        raise ValueError("unsupported replay output label")
     label = f"seed-{seed:010d}"
     return [
         *docker,
@@ -47,7 +51,7 @@ def replay_command(
         "--pull=never",
         "--network=none",
         "--name",
-        f"align-policy-telemetry-{run.name.lower()}",
+        f"align-policy-telemetry-{run.name.lower()}-{output_label}",
         "--runtime=nvidia",
         "--gpus",
         f"device={gpu}",
@@ -62,14 +66,14 @@ def replay_command(
         "--mount",
         f"type=bind,src={run},dst=/output",
         "--mount",
-        f"type=bind,src={run / 'evaluation/kit-logs'},dst=/isaac-sim/kit/logs",
+        f"type=bind,src={run / output_label / 'kit-logs'},dst=/isaac-sim/kit/logs",
         image_id,
         "-m",
         "align.simulation.vector_task",
         "--config",
         f"/source/{label}/config.json",
         "--output",
-        "/output/evaluation",
+        f"/output/{output_label}",
         "--scenario",
         "evaluation",
         "--num-envs",
@@ -88,6 +92,7 @@ def replay_command(
         "--evaluation-update",
         str(update),
         "--policy-telemetry",
+        *(["--evaluation-timing-config", timing_config] if timing_config else []),
     ]
 
 

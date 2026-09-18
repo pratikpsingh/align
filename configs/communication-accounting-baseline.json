@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "position_components": 3,
+  "velocity_components": 3,
+  "bytes_per_component": 4,
+  "packet_overhead_bytes": 16,
+  "budgets": [1, 2, 3, 7]
+}

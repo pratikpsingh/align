@@ -45,6 +45,65 @@ EVALUATION_COLUMNS = (
 )
 
 
+def write_telemetry_rows(
+    writer,
+    *,
+    env,
+    output_td,
+    pre_state,
+    actions_cpu,
+    env_id: int,
+    step: int,
+    progress: int,
+    phase: str,
+    kind: str,
+) -> int:
+    """Write one audited transition row for each drone in an environment."""
+    fields = {
+        "pre_position": pre_state[env_id, :, :3],
+        "pre_velocity": pre_state[env_id, :, 7:10],
+        "position": env.state[env_id, :, :3],
+        "velocity": env.state[env_id, :, 7:10],
+        "target": env.last_targets[env_id],
+        "command": env.commanded_velocities[env_id],
+    }
+    for agent_id in range(env.construction_cfg.num_agents):
+        row = {
+            "evaluation_step": step,
+            "env_id": env_id,
+            "episode_step": progress,
+            "phase": phase,
+            "formation_kind": kind,
+            "agent_id": agent_id,
+            "agent_reward": float(output_td[("agents", "reward")][env_id, agent_id].item()),
+            "team_reward": float(env.last_team_reward[env_id].item()),
+            "contact_force_n": float(env.contact_force[env_id, agent_id].item()),
+        }
+        for group, names in VECTOR_FIELDS.items():
+            row.update(zip(names, fields[group][agent_id].tolist(), strict=True))
+        row.update(
+            zip(("qw", "qx", "qy", "qz"), env.state[env_id, agent_id, 3:7].tolist(), strict=True)
+        )
+        for prefix, values in (
+            ("action", actions_cpu[env_id, agent_id]),
+            ("rotor_raw", env.raw_rotor_action[env_id, agent_id]),
+            ("rotor_applied", env.applied_rotor_action[env_id, agent_id]),
+        ):
+            row.update({f"{prefix}_{i}": float(value) for i, value in enumerate(values)})
+        for prefix, values in (
+            ("raw", env.last_reward_raw_components[env_id, agent_id]),
+            ("weighted", env.last_reward_components[env_id, agent_id]),
+        ):
+            row.update(
+                {
+                    f"{prefix}_{name}": float(value)
+                    for name, value in zip(COMPONENT_NAMES, values, strict=True)
+                }
+            )
+        writer.writerow(row)
+    return env.construction_cfg.num_agents
+
+
 def _optimizer(module, learning_rate: float, config: RecurrentPPOConfig):
     return torch.optim.Adam(module.parameters(), lr=learning_rate, eps=config.adam_epsilon)
 
@@ -224,64 +283,18 @@ def run_policy_evaluation(
                     )
                     raw_rows += 1
                     if telemetry_writer is not None:
-                        fields = {
-                            "pre_position": pre_state[env_id, :, :3],
-                            "pre_velocity": pre_state[env_id, :, 7:10],
-                            "position": env.state[env_id, :, :3],
-                            "velocity": env.state[env_id, :, 7:10],
-                            "target": env.last_targets[env_id],
-                            "command": env.commanded_velocities[env_id],
-                        }
-                        for agent_id in range(num_agents):
-                            row = {
-                                "evaluation_step": step,
-                                "env_id": env_id,
-                                "episode_step": int(progress[env_id].item()),
-                                "phase": phase,
-                                "formation_kind": kind,
-                                "agent_id": agent_id,
-                                "agent_reward": float(
-                                    output_td[("agents", "reward")][env_id, agent_id].item()
-                                ),
-                                "team_reward": float(team_rewards[env_id].item()),
-                                "contact_force_n": float(
-                                    env.contact_force[env_id, agent_id].item()
-                                ),
-                            }
-                            for group, names in VECTOR_FIELDS.items():
-                                row.update(
-                                    zip(names, fields[group][agent_id].tolist(), strict=True)
-                                )
-                            row.update(
-                                zip(
-                                    ("qw", "qx", "qy", "qz"),
-                                    env.state[env_id, agent_id, 3:7].tolist(),
-                                    strict=True,
-                                )
-                            )
-                            for prefix, values in (
-                                ("action", actions_cpu[env_id, agent_id]),
-                                ("rotor_raw", env.raw_rotor_action[env_id, agent_id]),
-                                ("rotor_applied", env.applied_rotor_action[env_id, agent_id]),
-                            ):
-                                row.update(
-                                    {
-                                        f"{prefix}_{i}": float(value)
-                                        for i, value in enumerate(values)
-                                    }
-                                )
-                            for prefix, values in (
-                                ("raw", env.last_reward_raw_components[env_id, agent_id]),
-                                ("weighted", env.last_reward_components[env_id, agent_id]),
-                            ):
-                                row.update(
-                                    {
-                                        f"{prefix}_{name}": float(value)
-                                        for name, value in zip(COMPONENT_NAMES, values, strict=True)
-                                    }
-                                )
-                            telemetry_writer.writerow(row)
-                            telemetry_rows += 1
+                        telemetry_rows += write_telemetry_rows(
+                            telemetry_writer,
+                            env=env,
+                            output_td=output_td,
+                            pre_state=pre_state,
+                            actions_cpu=actions_cpu,
+                            env_id=env_id,
+                            step=step,
+                            progress=int(progress[env_id].item()),
+                            phase=phase,
+                            kind=kind,
+                        )
                 stream.flush()
                 if telemetry_stream is not None:
                     telemetry_stream.flush()

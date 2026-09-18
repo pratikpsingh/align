@@ -35,5 +35,8 @@ Start here, then follow the numbered files in order. The prefixes describe readi
 29. [Matched formation-training comparison](29-matched-template-comparison.md): equal-budget plane specialist and four-template generalist protocol, commands, audits, and result limits.
 30. [Formation-phase learning diagnosis](30-formation-phase-diagnosis.md): CPU-only phase windows, action/separation checks, accepted result, and observability gaps.
 31. [Frozen-policy drone telemetry](31-policy-telemetry.md): read-only checkpoint replay, per-drone control/reward trace, audit, and lab command.
+32. [Frozen-policy episode timing](32-frozen-policy-timing.md): same-checkpoint baseline/extended schedule evaluation, audit, command, and interpretation.
+33. [Target-directed reference control](33-reference-control.md): bounded physical controller, matched schedules, raw audit, and lab command.
+34. [Communication accounting](34-communication-accounting.md): offline topology sweep, packet-byte proxy assumptions, raw artifacts, and limits.
 
 For beginner explanations, begin with the [learning index](../learning/00-README.md). For research scope and intended implementation, use the [planning index](../plans/00-README.md). Setup instructions distinguish CPU contracts, implemented simulator behavior, and pending research validation.

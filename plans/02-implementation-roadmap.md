@@ -81,6 +81,7 @@ Dependencies: verified recurrent learning, recoverable runs, and a frozen basic 
   - [x] Diagnose saved frozen-policy formation phases without simulator replay. Run `20260918T120338.089896IST-b257083e` passed 64 reset-safe episode audits; final specialist assigned error changed only 1.6108→1.6083 m during formation while pairwise error worsened. Per-component rewards and realized controller motion remain unobserved; see [the evidence register](09-unresolved-evidence.md).
 - [ ] Enforce hard communication range/budget masks and record neighbor topology and message age.
 - [ ] Implement an explicit communication accounting model and neighbor-budget study, separating observation count from transmitted bytes.
+  - [x] Add a CPU-only, saved-trajectory topology sweep and declared unicast/ideal-broadcast packet-byte proxies. Audit `20260918T165720.534716IST-80f3f426` passed over 2,210 snapshots; the policy trajectory was held fixed, so live budget effects and radio traffic remain unmeasured.
 - [ ] Implement waypoint advancement, settling/completion conditions, and direct-versus-waypoint evaluation.
 - [ ] Add commanded in-flight template transitions, feasible target motion, and transition-specific metrics.
 - [ ] Evaluate the frozen actor on multiple swarm sizes; record infeasible geometry, memory limits, and failures explicitly.
