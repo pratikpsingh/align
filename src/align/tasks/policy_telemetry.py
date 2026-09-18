@@ -177,6 +177,94 @@ def audit_telemetry(
     }
 
 
+def audit_airborne_contacts(
+    telemetry_path: Path,
+    evaluation_path: Path,
+    *,
+    airborne_height_m: float,
+    contact_force_threshold_n: float,
+) -> dict:
+    """Find first post-ascent contact per drone and episode in a saved replay."""
+    if airborne_height_m <= 0 or contact_force_threshold_n <= 0:
+        raise ValueError("contact audit thresholds must be positive")
+    with evaluation_path.open(newline="", encoding="utf-8") as stream:
+        aggregate = {
+            (int(row["evaluation_step"]), int(row["env_id"])): row for row in csv.DictReader(stream)
+        }
+    if not aggregate:
+        raise ValueError("empty evaluation CSV")
+    episode_index: dict[int, int] = defaultdict(int)
+    last_episode_step: dict[int, int] = {}
+    first_airborne: dict[tuple[int, int], int] = {}
+    recorded: set[tuple[int, int, int]] = set()
+    events = []
+    drone_rows = 0
+    with telemetry_path.open(newline="", encoding="utf-8") as stream:
+        reader = csv.DictReader(stream)
+        if tuple(reader.fieldnames or ()) != TELEMETRY_COLUMNS:
+            raise ValueError("telemetry schema mismatch")
+        for row in reader:
+            drone_rows += 1
+            env_id = int(row["env_id"])
+            agent_id = int(row["agent_id"])
+            episode_step = int(row["episode_step"])
+            key = (int(row["evaluation_step"]), env_id)
+            reference = aggregate.get(key)
+            if reference is None:
+                raise ValueError(f"missing evaluation row at {key}")
+            if int(reference["episode_step"]) != episode_step or reference["phase"] != row["phase"]:
+                raise ValueError(f"episode or phase mismatch at {key}")
+            if env_id in last_episode_step and episode_step < last_episode_step[env_id]:
+                episode_index[env_id] += 1
+                first_airborne = {
+                    agent_key: step
+                    for agent_key, step in first_airborne.items()
+                    if agent_key[0] != env_id
+                }
+            last_episode_step[env_id] = episode_step
+            height = float(row["z_m"])
+            force = float(row["contact_force_n"])
+            command_z = float(row["command_vz_m_s"])
+            if not all(map(math.isfinite, (height, force, command_z))):
+                raise ValueError(f"nonfinite contact telemetry at {key}")
+            agent_key = (env_id, agent_id)
+            if height > airborne_height_m:
+                first_airborne.setdefault(agent_key, episode_step)
+            event_key = (env_id, episode_index[env_id], agent_id)
+            if (
+                agent_key in first_airborne
+                and force > contact_force_threshold_n
+                and event_key not in recorded
+            ):
+                recorded.add(event_key)
+                events.append(
+                    {
+                        "env_id": env_id,
+                        "episode_index": episode_index[env_id],
+                        "agent_id": agent_id,
+                        "first_airborne_episode_step": first_airborne[agent_key],
+                        "first_contact_episode_step": episode_step,
+                        "first_contact_evaluation_step": key[0],
+                        "phase": row["phase"],
+                        "height_m": height,
+                        "contact_force_n": force,
+                        "command_vz_m_s": command_z,
+                        "reason_code_at_contact": int(reference["reason_code"]),
+                        "terminated_at_contact": reference["terminated"] == "True",
+                    }
+                )
+    if drone_rows == 0:
+        raise ValueError("empty telemetry CSV")
+    return {
+        "status": "passed",
+        "airborne_height_m": airborne_height_m,
+        "contact_force_threshold_n": contact_force_threshold_n,
+        "drone_rows": drone_rows,
+        "first_post_airborne_contacts": events,
+        "first_post_airborne_contact_count": len(events),
+    }
+
+
 def summarize_telemetry(
     telemetry_path: Path,
     *,
@@ -235,8 +323,6 @@ def summarize_telemetry(
             if phase == "formation":
                 key = (int(row["env_id"]), int(row["agent_id"]))
                 first_formation.setdefault(key, row)
-    if not first_formation:
-        raise ValueError("no formation-phase rows")
     phase_means = {}
     for phase, summary in phases.items():
         count = summary["drone_rows"]
@@ -261,6 +347,7 @@ def summarize_telemetry(
             max(0.0, z_error - steps * control_dt_seconds * max_speed_m_s)
         )
     return {
+        "formation_phase_reached": bool(first_formation),
         "phase_means": phase_means,
         "latest_dwell_start_episode_step": latest_dwell_start,
         "remaining_command_steps_at_first_formation": available_steps,

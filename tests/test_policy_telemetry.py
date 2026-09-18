@@ -7,8 +7,16 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from align.runtime.policy_telemetry_runtime import replay_command
-from align.tasks.policy_telemetry import TELEMETRY_COLUMNS, audit_telemetry, summarize_telemetry
+from align.runtime.policy_telemetry_runtime import (
+    replay_command,
+    valid_early_contact_capture,
+)
+from align.tasks.policy_telemetry import (
+    TELEMETRY_COLUMNS,
+    audit_airborne_contacts,
+    audit_telemetry,
+    summarize_telemetry,
+)
 
 
 class PolicyTelemetryTests(unittest.TestCase):
@@ -158,6 +166,146 @@ class PolicyTelemetryTests(unittest.TestCase):
             self.assertAlmostEqual(
                 result["altitude_only_assigned_rmse_lower_bound_at_dwell_m"][0], 1.05
             )
+
+    def test_airborne_contact_audit_preserves_per_world_reset_state(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            evaluation = root / "evaluation.csv"
+            telemetry = root / "policy-telemetry.csv"
+            states = {
+                0: [
+                    (1, "ground", 0.06, 0.10, 0, False),
+                    (2, "takeoff", 0.30, 0.00, 0, False),
+                    (3, "takeoff", 0.06, 0.50, 0, False),
+                    (4, "formation", 0.06, 0.50, 3, True),
+                    (1, "ground", 0.06, 0.10, 0, False),
+                ],
+                1: [
+                    (1, "ground", 0.06, 0.10, 0, False),
+                    (2, "takeoff", 0.30, 0.00, 0, False),
+                    (3, "takeoff", 0.30, 0.00, 0, False),
+                    (4, "takeoff", 0.30, 0.00, 0, False),
+                    (5, "takeoff", 0.06, 0.40, 0, False),
+                ],
+            }
+            with (
+                evaluation.open("w", newline="", encoding="utf-8") as eval_stream,
+                telemetry.open("w", newline="", encoding="utf-8") as drone_stream,
+            ):
+                eval_writer = csv.DictWriter(
+                    eval_stream,
+                    fieldnames=(
+                        "evaluation_step",
+                        "env_id",
+                        "episode_step",
+                        "phase",
+                        "reason_code",
+                        "terminated",
+                    ),
+                )
+                drone_writer = csv.DictWriter(drone_stream, fieldnames=TELEMETRY_COLUMNS)
+                eval_writer.writeheader()
+                drone_writer.writeheader()
+                for evaluation_step in range(5):
+                    for env_id in range(2):
+                        step, phase, height, force, reason, terminated = states[env_id][
+                            evaluation_step
+                        ]
+                        eval_writer.writerow(
+                            {
+                                "evaluation_step": evaluation_step,
+                                "env_id": env_id,
+                                "episode_step": step,
+                                "phase": phase,
+                                "reason_code": reason,
+                                "terminated": terminated,
+                            }
+                        )
+                        for agent_id in range(2):
+                            row = dict.fromkeys(TELEMETRY_COLUMNS, 0)
+                            row.update(
+                                evaluation_step=evaluation_step,
+                                env_id=env_id,
+                                episode_step=step,
+                                phase=phase,
+                                formation_kind="plane",
+                                agent_id=agent_id,
+                                z_m=height if agent_id == 0 else 0.06,
+                                contact_force_n=force if agent_id == 0 else 0.0,
+                                command_vz_m_s=0.2,
+                            )
+                            drone_writer.writerow(row)
+            result = audit_airborne_contacts(
+                telemetry,
+                evaluation,
+                airborne_height_m=0.25,
+                contact_force_threshold_n=0.01,
+            )
+            self.assertEqual(result["first_post_airborne_contact_count"], 2)
+            first, second = result["first_post_airborne_contacts"]
+            self.assertEqual(
+                (first["env_id"], first["episode_index"], first["agent_id"]),
+                (0, 0, 0),
+            )
+            self.assertEqual(first["first_airborne_episode_step"], 2)
+            self.assertEqual(first["first_contact_episode_step"], 3)
+            self.assertEqual(first["reason_code_at_contact"], 0)
+            self.assertEqual(
+                (second["env_id"], second["episode_index"], second["first_contact_episode_step"]),
+                (1, 0, 5),
+            )
+
+    def test_preformation_safety_replay_can_be_analyzed(self):
+        probe = {
+            "status": "failed",
+            "phase": "before_close",
+            "drone_physics_tested": True,
+            "vector_task_physics_tested": True,
+            "deterministic_evaluation_tested": True,
+        }
+        metrics = {
+            "status": "failed",
+            "formation_phase_reached": False,
+            "outcome_counts": {"3": 4},
+            "checks": {
+                "all_declared_templates_reached_formation_phase": False,
+                "raw_row_count_is_exact": True,
+            },
+        }
+        self.assertTrue(valid_early_contact_capture(1, probe, metrics))
+        self.assertTrue(valid_early_contact_capture(0, probe, metrics))
+        probe["error"] = "unexpected simulator exception"
+        self.assertFalse(valid_early_contact_capture(0, probe, metrics))
+        probe.pop("error")
+        metrics["checks"]["raw_row_count_is_exact"] = False
+        self.assertFalse(valid_early_contact_capture(1, probe, metrics))
+        metrics["checks"]["raw_row_count_is_exact"] = True
+        metrics["outcome_counts"]["3"] = 0
+        self.assertFalse(valid_early_contact_capture(1, probe, metrics))
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "policy-telemetry.csv"
+            row = dict.fromkeys(TELEMETRY_COLUMNS, 0)
+            row.update(
+                evaluation_step=0,
+                env_id=0,
+                episode_step=1,
+                phase="takeoff",
+                formation_kind="plane",
+                agent_id=0,
+            )
+            with path.open("w", newline="", encoding="utf-8") as stream:
+                writer = csv.DictWriter(stream, fieldnames=TELEMETRY_COLUMNS)
+                writer.writeheader()
+                writer.writerow(row)
+            summary = summarize_telemetry(
+                path,
+                max_speed_m_s=0.5,
+                control_dt_seconds=0.01,
+                max_episode_steps=100,
+                success_dwell_steps=10,
+            )
+            self.assertFalse(summary["formation_phase_reached"])
+            self.assertEqual(summary["remaining_command_steps_at_first_formation"], {})
 
     def test_source_checkpoint_is_read_only_and_trace_is_explicit(self):
         command = replay_command(

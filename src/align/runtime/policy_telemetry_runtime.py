@@ -24,7 +24,7 @@ from align.runtime.drone_runtime import (
     project_root,
 )
 from align.runtime.stability_runtime import valid_phase
-from align.tasks.policy_telemetry import audit_telemetry
+from align.tasks.policy_telemetry import audit_airborne_contacts, audit_telemetry
 
 
 def replay_command(
@@ -94,6 +94,36 @@ def replay_command(
         "--policy-telemetry",
         *(["--evaluation-timing-config", timing_config] if timing_config else []),
     ]
+
+
+def valid_early_contact_capture(exit_code: int, probe: object, metrics: object) -> bool:
+    """Accept an intact telemetry capture whose only failed gate is formation entry."""
+    if not (
+        exit_code in (0, 1)
+        and isinstance(probe, dict)
+        and probe.get("status") == "failed"
+        and probe.get("error") is None
+        and probe.get("phase") == "before_close"
+        and probe.get("drone_physics_tested") is True
+        and probe.get("vector_task_physics_tested") is True
+        and probe.get("deterministic_evaluation_tested") is True
+        and isinstance(metrics, dict)
+        and metrics.get("status") == "failed"
+        and metrics.get("formation_phase_reached") is False
+        and int(metrics.get("outcome_counts", {}).get("3", 0)) > 0
+    ):
+        return False
+    checks = metrics.get("checks")
+    return (
+        isinstance(checks, dict)
+        and len(checks) > 1
+        and checks.get("all_declared_templates_reached_formation_phase") is False
+        and all(
+            value is True
+            for name, value in checks.items()
+            if name != "all_declared_templates_reached_formation_phase"
+        )
+    )
 
 
 def run_main(argv=None) -> int:
@@ -217,13 +247,18 @@ def run_main(argv=None) -> int:
         probe_path, metrics_path = output / "probe-result.json", output / "metrics.json"
         report["probe"] = json.loads(probe_path.read_text()) if probe_path.exists() else None
         report["metrics"] = json.loads(metrics_path.read_text()) if metrics_path.exists() else None
-        if not valid_phase(
+        standard_capture = valid_phase(
             report["exit_code"],
             report["probe"],
             report["metrics"],
             "deterministic_evaluation_tested",
-        ):
+        )
+        early_contact_capture = valid_early_contact_capture(
+            report["exit_code"], report["probe"], report["metrics"]
+        )
+        if not (standard_capture or early_contact_capture):
             raise RuntimeError("simulator evaluation failed; inspect evaluation/console.log")
+        report["capture_mode"] = "early_safety_termination" if early_contact_capture else "standard"
         metrics = report["metrics"]
         if (
             metrics["checkpoint_id"] != manifest["checkpoint_id"]
@@ -237,6 +272,17 @@ def run_main(argv=None) -> int:
             max_speed_m_s=resolved["construction"]["max_speed_m_s"],
             reward_config=resolved["reward"],
         )
+        report["airborne_contact_audit"] = audit_airborne_contacts(
+            output / "policy-telemetry.csv",
+            output / "evaluation.csv",
+            airborne_height_m=resolved["task"]["airborne_height_m"],
+            contact_force_threshold_n=resolved["task"]["contact_force_threshold_n"],
+        )
+        if (
+            early_contact_capture
+            and not report["airborne_contact_audit"]["first_post_airborne_contact_count"]
+        ):
+            raise RuntimeError("early safety capture has no post-airborne contact in raw telemetry")
         report["status"] = "passed"
     except KeyboardInterrupt:
         report["status"] = "interrupted"

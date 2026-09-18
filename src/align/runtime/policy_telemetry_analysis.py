@@ -9,7 +9,12 @@ from pathlib import Path
 
 from align.artifacts import create_run_directory
 from align.runtime.drone_runtime import digest, finish, new_report, project_root
-from align.tasks.policy_telemetry import audit_telemetry, summarize_telemetry
+from align.runtime.policy_telemetry_runtime import valid_early_contact_capture
+from align.tasks.policy_telemetry import (
+    audit_airborne_contacts,
+    audit_telemetry,
+    summarize_telemetry,
+)
 
 
 def run_main(argv=None) -> int:
@@ -21,15 +26,29 @@ def run_main(argv=None) -> int:
     if source.parent != (root / "runs/policy-telemetry").resolve():
         raise ValueError("source-run must be a direct child of runs/policy-telemetry")
     source_report = json.loads((source / "report.json").read_text())
-    if source_report["status"] != "passed":
-        raise ValueError("source telemetry replay must have passed")
+    early_contact_capture = (
+        source_report["status"] == "failed"
+        and valid_early_contact_capture(
+            source_report.get("exit_code"),
+            source_report.get("probe"),
+            source_report.get("metrics"),
+        )
+        and source_report.get("error")
+        == "RuntimeError: simulator evaluation failed; inspect evaluation/console.log"
+    )
+    if source_report["status"] != "passed" and not early_contact_capture:
+        raise ValueError("source telemetry replay did not produce an intact capture")
+    evaluation = source / "evaluation"
+    if source_report.get("probe") != json.loads(
+        (evaluation / "probe-result.json").read_text()
+    ) or source_report.get("metrics") != json.loads((evaluation / "metrics.json").read_text()):
+        raise ValueError("source report and simulator artifacts differ")
     source_training = Path(source_report["source_run"])
     seed = source_report["policy_seed"]
     config_path = source_training / f"seed-{seed:010d}/config.json"
     if digest(config_path) != source_report["source_config_sha256"]:
         raise ValueError("source configuration hash changed")
     config = json.loads(config_path.read_text())
-    evaluation = source / "evaluation"
     run = create_run_directory(root / "runs/policy-telemetry-analysis")
     started = time.perf_counter()
     report = new_report()
@@ -41,6 +60,8 @@ def run_main(argv=None) -> int:
         checkpoint_id=source_report["checkpoint_id"],
         checkpoint_sha256=source_report["checkpoint_sha256"],
         source_config_sha256=digest(config_path),
+        source_status=source_report["status"],
+        capture_mode="early_safety_termination" if early_contact_capture else "standard",
     )
     try:
         report["audit"] = audit_telemetry(
@@ -57,6 +78,17 @@ def run_main(argv=None) -> int:
             max_episode_steps=config["task"]["max_episode_steps"],
             success_dwell_steps=config["task"]["success_dwell_steps"],
         )
+        report["airborne_contact_audit"] = audit_airborne_contacts(
+            evaluation / "policy-telemetry.csv",
+            evaluation / "evaluation.csv",
+            airborne_height_m=config["task"]["airborne_height_m"],
+            contact_force_threshold_n=config["task"]["contact_force_threshold_n"],
+        )
+        if (
+            early_contact_capture
+            and not report["airborne_contact_audit"]["first_post_airborne_contact_count"]
+        ):
+            raise ValueError("early safety capture has no post-airborne contact")
         report["status"] = "passed"
     except (OSError, ValueError, KeyError, TypeError) as exc:
         report.update(status="failed", error=f"{type(exc).__name__}: {exc}")
