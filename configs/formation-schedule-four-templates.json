@@ -1,0 +1,6 @@
+{
+  "schema_version": 1,
+  "kinds": ["cube", "sphere", "pyramid", "plane"],
+  "seed": 20260917,
+  "assignment": "seeded_balanced_rotation"
+}

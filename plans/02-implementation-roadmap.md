@@ -75,6 +75,10 @@ Acceptance: an interrupted run resumes from its latest valid committed state; no
 Dependencies: verified recurrent learning, recoverable runs, and a frozen basic evaluation protocol.
 
 - [ ] Train one target-conditioned actor on the selected formation templates and ground-to-formation task.
+  - [x] The deterministic four-template scheduler, unchanged local target conditioning, per-template raw metrics, recurrent PPO/checkpoint path, and frozen evaluation path passed live run `20260917T232002.612950IST-6bc40009` across two seeds, eight optimizer updates, and six exact-checkpoint evaluations.
+  - [ ] Establish successful, stable formation behavior. The matched two-arm, two-seed 12-update run passed but all 64 evaluated environment episodes timed out; final plane assigned error remained about 1.38 m versus a 0.10 m tolerance. Diagnose formation-phase trajectories, reward contributions, and controller/action behavior before increasing the budget.
+  - [x] Implement and execute an equal-budget plane-specialist versus four-template-generalist protocol. GPU arms `20260918T105406.233167IST-d74f8b47` and `20260918T111606.650830IST-7fb24d49` passed; comparison `20260918T115133.727696IST-e9186486` matched image/source/configuration and audited 48 training and 16 evaluation CSVs. Per-seed plane exposure was 36,864 versus 9,216 rows, so the result is equal-total-update rather than equal-plane-exposure.
+  - [x] Diagnose saved frozen-policy formation phases without simulator replay. Run `20260918T120338.089896IST-b257083e` passed 64 reset-safe episode audits; final specialist assigned error changed only 1.6108→1.6083 m during formation while pairwise error worsened. Per-component rewards and realized controller motion remain unobserved; see [the evidence register](09-unresolved-evidence.md).
 - [ ] Enforce hard communication range/budget masks and record neighbor topology and message age.
 - [ ] Implement an explicit communication accounting model and neighbor-budget study, separating observation count from transmitted bytes.
 - [ ] Implement waypoint advancement, settling/completion conditions, and direct-versus-waypoint evaluation.

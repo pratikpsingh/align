@@ -113,7 +113,7 @@ class ConfigurationTests(unittest.TestCase):
     def test_invalid_or_unsupported_configuration_is_rejected(self):
         for changes in (
             {"num_agents": 1},
-            {"formation_kind": "cube"},
+            {"formation_kind": "unknown"},
             {"control_decimation": 2},
             {"dwell_seconds": 8.0},
             {"minimum_separation_m": 1.0},

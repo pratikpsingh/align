@@ -11,6 +11,7 @@ import random
 import shutil
 import time
 import traceback
+from dataclasses import replace
 from importlib import metadata
 from pathlib import Path
 
@@ -27,6 +28,7 @@ from align.policies.config import RecurrentPolicyConfig
 from align.simulation.assets import localize_materials
 from align.simulation.multi_drone_contract import MultiDroneConfig, build_group_layout
 from align.tasks.environment import TaskEnvironmentConfig
+from align.tasks.formation_schedule import FormationScheduleConfig
 from align.tasks.observation import ObservationConfig, build_observations
 from align.tasks.reward import RewardConfig, RewardMemory, compute_step_reward
 
@@ -108,11 +110,13 @@ def load_bundle(path):
         | collector_sections
         | normalized_stability_sections
         | normalized_critic_calibration_sections
+        | {"formation_schedule"}
     )
     missing = required - set(values)
     unknown = set(values) - known
     supplied_optional = set(values) - required
-    valid_optional = supplied_optional in (
+    learner_optional = supplied_optional - {"formation_schedule"}
+    valid_optional = learner_optional in (
         set(),
         collector_sections,
         *learner_sections,
@@ -128,37 +132,42 @@ def load_bundle(path):
     reward = RewardConfig.from_dict(values["reward"])
     task = TaskEnvironmentConfig.from_dict(values["task"])
     task.validate_compatibility(construction, observation, reward)
-    policy = RecurrentPolicyConfig.from_dict(values["policy"]) if supplied_optional else None
-    rollout = RolloutConfig.from_dict(values["rollout"]) if supplied_optional else None
+    formation_schedule = (
+        FormationScheduleConfig.from_dict(values["formation_schedule"])
+        if "formation_schedule" in values
+        else FormationScheduleConfig(kinds=(construction.formation_kind,), seed=construction.seed)
+    )
+    formation_schedule.assignments(task.num_envs, 0)
+    policy = RecurrentPolicyConfig.from_dict(values["policy"]) if learner_optional else None
+    rollout = RolloutConfig.from_dict(values["rollout"]) if learner_optional else None
     collector = (
         CollectorProbeConfig.from_dict(values["collector"])
-        if supplied_optional == collector_sections
+        if learner_optional == collector_sections
         else None
     )
     ppo = (
         RecurrentPPOConfig.from_dict(values["ppo"])
-        if supplied_optional in learner_sections
+        if learner_optional in learner_sections
         else None
     )
     recovery = (
         RecoveryConfig.from_dict(values["recovery"])
-        if supplied_optional in learner_sections
+        if learner_optional in learner_sections
         else None
     )
     training = (
         TaskTrainingConfig.from_dict(values["training"])
-        if supplied_optional in learner_sections
+        if learner_optional in learner_sections
         else None
     )
     stability = (
         StabilityConfig.from_dict(values["stability"])
-        if supplied_optional in (stability_sections, normalized_stability_sections)
+        if learner_optional in (stability_sections, normalized_stability_sections)
         else None
     )
     critic_calibration = (
         CriticCalibrationConfig.from_dict(values["critic_calibration"])
-        if supplied_optional
-        in (critic_calibration_sections, normalized_critic_calibration_sections)
+        if learner_optional in (critic_calibration_sections, normalized_critic_calibration_sections)
         else None
     )
     critic_normalization = (
@@ -181,6 +190,7 @@ def load_bundle(path):
         stability,
         critic_calibration,
         critic_normalization,
+        formation_schedule,
     )
 
 
@@ -269,6 +279,7 @@ def run(
         stability,
         critic_calibration,
         critic_normalization,
+        formation_schedule,
     ) = load_bundle(config_path)
     if num_envs not in (1, task.num_envs):
         raise ValueError("num_envs must be one or the configured probe batch")
@@ -389,16 +400,33 @@ def run(
                 self.reward_cfg = reward
                 self.task_cfg = task
                 self.layout = build_group_layout(construction)
+                self.formation_schedule = formation_schedule
+                self.formation_kinds = formation_schedule.ordered_kinds
+                self.formation_layouts = tuple(
+                    build_group_layout(replace(construction, formation_kind=kind))
+                    for kind in self.formation_kinds
+                )
                 super().__init__(cfg, headless=True)
-                self.target_bank = torch.tensor(
+                self.template_target_bank = torch.tensor(
                     [
-                        self.layout.ground_positions_m,
-                        self.layout.takeoff_positions_m,
-                        self.layout.assigned_target_positions_m,
+                        [
+                            layout.ground_positions_m,
+                            layout.takeoff_positions_m,
+                            layout.assigned_target_positions_m,
+                        ]
+                        for layout in self.formation_layouts
                     ],
                     device=self.device,
                     dtype=torch.float32,
                 )
+                self.template_index = torch.zeros(num_envs, dtype=torch.long, device=self.device)
+                self.template_batch_index = 0
+                self.template_reset_count = torch.zeros(
+                    num_envs, dtype=torch.long, device=self.device
+                )
+                self.template_kind_to_index = {
+                    kind: index for index, kind in enumerate(self.formation_kinds)
+                }
                 for env_path in self.envs_prim_paths:
                     for template_body in self.scene_setup[
                         "contact_reports_prepared_before_cloning"
@@ -575,10 +603,34 @@ def run(
                 )
 
             def targets_for_progress(self):
-                return self.target_bank[self.phase_indices()]
+                return self.template_target_bank[self.template_index, self.phase_indices()]
+
+            def set_template_batch(self, batch_index):
+                assignments = self.formation_schedule.assignments(num_envs, batch_index)
+                self.template_batch_index = batch_index
+                self.template_reset_count.zero_()
+                self.template_index.copy_(
+                    torch.tensor(
+                        [self.template_kind_to_index[kind] for kind in assignments],
+                        dtype=torch.long,
+                        device=self.device,
+                    )
+                )
+                event("template_batch_selected", batch_index=batch_index, assignments=assignments)
+
+            def template_names(self):
+                return tuple(
+                    self.formation_kinds[index] for index in self.template_index.cpu().tolist()
+                )
 
             def _reset_idx(self, env_ids):
                 self.drone._reset_idx(env_ids, train=False)
+                for env_id in env_ids.cpu().tolist():
+                    assignments = self.formation_schedule.assignments(
+                        num_envs, self.template_batch_index + int(self.template_reset_count[env_id])
+                    )
+                    self.template_index[env_id] = self.template_kind_to_index[assignments[env_id]]
+                self.template_reset_count[env_ids] += 1
                 count = len(env_ids)
                 local = torch.tensor(
                     self.layout.ground_positions_m, device=self.device, dtype=torch.float32
@@ -662,7 +714,9 @@ def run(
 
             def _step(self, tensordict):
                 self.last_reward_phase = self.phase_indices().clone()
-                self.last_targets = self.target_bank[self.last_reward_phase]
+                self.last_targets = self.template_target_bank[
+                    self.template_index, self.last_reward_phase
+                ]
                 self._pre_sim_step(tensordict)
                 for substep in range(self.substeps):
                     self.sim.step(self._should_render(substep))
@@ -929,6 +983,12 @@ def run(
 
         cfg = build_isaac_config(construction, task, num_envs)
         env = AlignVectorTask(cfg)
+        result["formation_schedule"] = formation_schedule.to_dict()
+        result["template_kinds"] = list(env.formation_kinds)
+        result["template_assigned_targets_m"] = {
+            kind: layout.assigned_target_positions_m
+            for kind, layout in zip(env.formation_kinds, env.formation_layouts, strict=True)
+        }
         result["versions"] = {
             name: metadata.version(name)
             for name in (
@@ -984,6 +1044,7 @@ def run(
         save_json(output / "runtime.json", result)
 
         all_mask = torch.ones(num_envs, dtype=torch.bool, device=env.device)
+        env.set_template_batch(0)
         initial = env.reset_mask(all_mask)
         reset_positions = torch.tensor(env.layout.ground_positions_m, device=env.device).expand(
             num_envs, -1, -1

@@ -30,6 +30,7 @@ from align.runtime.drone_runtime import (
 )
 from align.simulation.multi_drone_contract import MultiDroneConfig
 from align.tasks.environment import TaskEnvironmentConfig
+from align.tasks.formation_schedule import FormationScheduleConfig
 from align.tasks.observation import ObservationConfig
 from align.tasks.reward import RewardConfig
 
@@ -75,6 +76,12 @@ def load_resolved_config(root: Path, args) -> dict:
         or root / "configs/critic-normalization-disabled.json",
         CriticNormalizationConfig,
     )
+    formation_schedule_path = getattr(args, "formation_schedule_config", None)
+    formation_schedule = (
+        _load(formation_schedule_path, FormationScheduleConfig)
+        if formation_schedule_path is not None
+        else None
+    )
     task.validate_compatibility(construction, observation, reward)
     rollout.validate_dimensions(
         num_envs=task.num_envs,
@@ -95,7 +102,7 @@ def load_resolved_config(root: Path, args) -> dict:
         raise ValueError("policy and rollout recurrent dimensions differ")
     if rollout.horizon >= task.max_episode_steps:
         raise ValueError("training rollout must end before the task time limit for reset evidence")
-    return {
+    resolved = {
         "construction": construction.to_dict(),
         "observation": observation.to_dict(),
         "reward": reward.to_dict(),
@@ -107,6 +114,10 @@ def load_resolved_config(root: Path, args) -> dict:
         "training": training.to_dict(),
         "critic_normalization": critic_normalization.to_dict(),
     }
+    if formation_schedule is not None:
+        formation_schedule.assignments(task.num_envs, 0)
+        resolved["formation_schedule"] = formation_schedule.to_dict()
+    return resolved
 
 
 def valid_attempt(exit_code: int, probe: object, metrics: object) -> bool:

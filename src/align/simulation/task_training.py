@@ -50,6 +50,8 @@ ROLLOUT_COLUMNS = (
     "rollout_step",
     "env_id",
     "episode_step",
+    "phase",
+    "formation_kind",
     "team_reward",
     "value",
     "bootstrap_value",
@@ -139,6 +141,7 @@ def _initial_state(
     task_sampler = {
         "episodes_completed": 0,
         "unfinished_environment_count": 0,
+        "next_template_batch_index": 0,
     }
     return (
         capture_learner_state(
@@ -398,6 +401,15 @@ def run_training_attempt(
 
     normalizer = FrozenCriticGroupNormalizer(normalization, env.observation_cfg)
     start_counters = dict(counters)
+    template_batch_index = start_counters["completed_updates"]
+    restored_template_batch = int(
+        task_sampler.get("next_template_batch_index", template_batch_index)
+    )
+    if restored_template_batch != template_batch_index:
+        raise ValueError("checkpoint template schedule differs from the completed-update counter")
+    env.set_template_batch(template_batch_index)
+    all_mask = torch.ones(cfg.num_envs, dtype=torch.bool, device=env.device)
+    initial = env.reset_mask(all_mask)
     actor_memory = actor.backbone.recurrent.initial_state(
         initial[("agents", "observation")], cfg.num_envs * cfg.num_agents
     )
@@ -432,6 +444,18 @@ def run_training_attempt(
     action_saturation_count = 0
     episode_count = int(task_sampler["episodes_completed"])
     raw_rows = 0
+    template_metrics = {
+        kind: {
+            "rows": 0,
+            "formation_rows": 0,
+            "team_reward_sum": 0.0,
+            "assigned_rmse_sum_m": 0.0,
+            "pairwise_rmse_sum_m": 0.0,
+            "minimum_separation_m": math.inf,
+            "outcomes": 0,
+        }
+        for kind in env.formation_schedule.kinds
+    }
     collection_started = time.perf_counter()
     with (output / "rollout.csv").open("x", newline="", encoding="utf-8") as stream:
         writer = csv.DictWriter(stream, fieldnames=ROLLOUT_COLUMNS)
@@ -473,16 +497,37 @@ def run_training_attempt(
                 team_rewards = env.last_team_reward.clone()
                 progress_before_reset = env.progress_buf.clone()
                 reasons = env.last_reason_code.clone()
+                phases = env.last_reward_phase.clone()
                 next_actor_memory = zero_done_actor_memory(actor_result.state, done, cfg)
                 next_critic_memory = zero_done_critic_memory(critic_result.state, done)
                 actions_cpu = actions.cpu()
+                template_names = env.template_names()
                 for env_id in range(cfg.num_envs):
+                    kind = template_names[env_id]
+                    template_row = template_metrics[kind]
+                    phase = ("ground", "takeoff", "formation")[int(phases[env_id].item())]
+                    template_row["rows"] += 1
+                    template_row["formation_rows"] += int(phase == "formation")
+                    template_row["team_reward_sum"] += float(team_rewards[env_id].item())
+                    template_row["assigned_rmse_sum_m"] += float(
+                        env.last_assigned_rmse[env_id].item()
+                    )
+                    template_row["pairwise_rmse_sum_m"] += float(
+                        env.last_pairwise_rmse[env_id].item()
+                    )
+                    template_row["minimum_separation_m"] = min(
+                        template_row["minimum_separation_m"],
+                        float(env.last_minimum_separation[env_id].item()),
+                    )
+                    template_row["outcomes"] += int(done[env_id].item())
                     writer.writerow(
                         {
                             "attempt_id": attempt_id,
                             "rollout_step": step,
                             "env_id": env_id,
                             "episode_step": int(progress_before_reset[env_id].item()),
+                            "phase": phase,
+                            "formation_kind": kind,
                             "team_reward": float(team_rewards[env_id].item()),
                             "value": float(values[env_id].item()),
                             "bootstrap_value": float(bootstrap_values[env_id].item()),
@@ -642,6 +687,7 @@ def run_training_attempt(
     task_sampler = {
         "episodes_completed": episode_count,
         "unfinished_environment_count": int((env.progress_buf > 0).sum().item()),
+        "next_template_batch_index": completed_updates,
     }
     state = capture_learner_state(
         actor=actor,
@@ -692,8 +738,30 @@ def run_training_attempt(
     )
     expected_environment_increment = cfg.horizon * cfg.num_envs
     expected_agent_increment = expected_environment_increment * cfg.num_agents
+    template_measurements = {
+        kind: {
+            "rows": values["rows"],
+            "formation_rows": values["formation_rows"],
+            "team_reward_mean": values["team_reward_sum"] / values["rows"],
+            "assigned_rmse_mean_m": values["assigned_rmse_sum_m"] / values["rows"],
+            "pairwise_rmse_mean_m": values["pairwise_rmse_sum_m"] / values["rows"],
+            "minimum_separation_m": values["minimum_separation_m"],
+            "outcomes": values["outcomes"],
+        }
+        for kind, values in template_metrics.items()
+        if values["rows"]
+    }
     checks = {
         "real_task_rollout_is_full": buffer.full,
+        "all_declared_formation_templates_observed": set(template_measurements)
+        == set(env.formation_schedule.kinds),
+        "all_declared_templates_reached_formation_phase": all(
+            values["formation_rows"] > 0 for values in template_measurements.values()
+        ),
+        "formation_target_sets_are_distinct": len(
+            {tuple(layout.assigned_target_positions_m) for layout in env.formation_layouts}
+        )
+        == len(env.formation_schedule.kinds),
         "rollout_tensors_are_finite": all(bool(torch.isfinite(value).all()) for value in tensors),
         "rollout_tensors_remained_on_cuda": all(value.device.type == "cuda" for value in tensors),
         "sampled_actions_are_bounded": action_min >= -1.0 and action_max <= 1.0,
@@ -769,6 +837,9 @@ def run_training_attempt(
         "abandoned_environment_episodes": abandoned,
         "unfinished_environment_count": task_sampler["unfinished_environment_count"],
         "episodes_completed_total": episode_count,
+        "formation_schedule": env.formation_schedule.to_dict(),
+        "template_batch_index": template_batch_index,
+        "template_measurements": template_measurements,
         "rollout_rows": raw_rows,
         "critic_normalization": normalization,
         "critic_distribution": critic_distribution,
@@ -778,6 +849,7 @@ def run_training_attempt(
         ],
         "critic_normalization_warmup_agent_transitions": warmup_metrics["agent_transitions"],
         "measurements": {
+            "template_measurements": template_measurements,
             "team_reward_mean": reward_sum / (cfg.horizon * cfg.num_envs),
             "team_reward_min": reward_min,
             "team_reward_max": reward_max,

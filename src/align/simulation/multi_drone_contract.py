@@ -7,6 +7,7 @@ from dataclasses import asdict, dataclass
 from itertools import combinations
 
 from align.formations import (
+    SUPPORTED_KINDS,
     Assignment,
     assign_agents_to_slots,
     evaluate_formation,
@@ -67,8 +68,8 @@ class MultiDroneConfig:
             raise ValueError("num_agents must be an integer of at least two")
         if type(self.repetitions) is not int or self.repetitions < 2:
             raise ValueError("At least two repetitions are needed to check reset leakage")
-        if self.formation_kind != "plane":
-            raise ValueError("The first physical construction probe supports plane formation only")
+        if self.formation_kind not in SUPPORTED_KINDS:
+            raise ValueError(f"formation_kind must come from {SUPPORTED_KINDS}")
         if len(self.target_center_m) != 3 or not all(
             type(value) in (int, float) and math.isfinite(value) for value in self.target_center_m
         ):

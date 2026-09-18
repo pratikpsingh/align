@@ -29,6 +29,7 @@ EVALUATION_COLUMNS = (
     "env_id",
     "episode_step",
     "phase",
+    "formation_kind",
     "team_reward",
     "assigned_rmse_m",
     "pairwise_rmse_m",
@@ -91,6 +92,9 @@ def run_policy_evaluation(
     normalization = restored["normalization"]
     normalization_before = copy.deepcopy(normalization)
     normalizer = FrozenCriticGroupNormalizer(normalization, env.observation_cfg)
+    env.set_template_batch(expected_update)
+    all_mask = torch.ones(env.num_envs, dtype=torch.bool, device=env.device)
+    initial = env.reset_mask(all_mask)
     normalized_initial_state = normalizer.apply(initial[("agents", "state")])
     if not normalization_matches_config(normalization, critic_normalization_config):
         raise ValueError("checkpoint critic normalization differs from evaluation config")
@@ -114,6 +118,18 @@ def run_policy_evaluation(
     nonfinite_rows = 0
     outcome_counts = {str(code): 0 for code in range(1, 7)}
     phase_rows = {"ground": 0, "takeoff": 0, "formation": 0}
+    template_metrics = {
+        kind: {
+            "rows": 0,
+            "formation_rows": 0,
+            "team_reward_sum": 0.0,
+            "assigned_rmse_sum_m": 0.0,
+            "pairwise_rmse_sum_m": 0.0,
+            "minimum_separation_m": math.inf,
+            "outcome_counts": {str(code): 0 for code in range(1, 7)},
+        }
+        for kind in env.formation_schedule.kinds
+    }
     raw_rows = 0
     with (output / "evaluation.csv").open("x", newline="", encoding="utf-8") as stream:
         writer = csv.DictWriter(stream, fieldnames=EVALUATION_COLUMNS)
@@ -146,18 +162,36 @@ def run_policy_evaluation(
                 )
                 nonfinite_rows += int((~torch.isfinite(values).all(dim=-1)).sum().item())
                 actions_cpu = actions.cpu()
+                template_names = env.template_names()
                 for env_id in range(num_envs):
                     phase = ("ground", "takeoff", "formation")[int(phases[env_id].item())]
+                    kind = template_names[env_id]
+                    template_row = template_metrics[kind]
+                    template_row["rows"] += 1
+                    template_row["formation_rows"] += int(phase == "formation")
+                    template_row["team_reward_sum"] += float(team_rewards[env_id].item())
+                    template_row["assigned_rmse_sum_m"] += float(
+                        env.last_assigned_rmse[env_id].item()
+                    )
+                    template_row["pairwise_rmse_sum_m"] += float(
+                        env.last_pairwise_rmse[env_id].item()
+                    )
+                    template_row["minimum_separation_m"] = min(
+                        template_row["minimum_separation_m"],
+                        float(env.last_minimum_separation[env_id].item()),
+                    )
                     phase_rows[phase] += 1
                     reason = int(reasons[env_id].item())
                     if reason:
                         outcome_counts[str(reason)] += 1
+                        template_row["outcome_counts"][str(reason)] += 1
                     writer.writerow(
                         {
                             "evaluation_step": step,
                             "env_id": env_id,
                             "episode_step": int(progress[env_id].item()),
                             "phase": phase,
+                            "formation_kind": kind,
                             "team_reward": float(team_rewards[env_id].item()),
                             "assigned_rmse_m": float(env.last_assigned_rmse[env_id].item()),
                             "pairwise_rmse_m": float(env.last_pairwise_rmse[env_id].item()),
@@ -190,6 +224,19 @@ def run_policy_evaluation(
                 else:
                     current_observation = final_observation
 
+    template_measurements = {
+        kind: {
+            "rows": values["rows"],
+            "formation_rows": values["formation_rows"],
+            "team_reward_mean": values["team_reward_sum"] / values["rows"],
+            "assigned_rmse_mean_m": values["assigned_rmse_sum_m"] / values["rows"],
+            "pairwise_rmse_mean_m": values["pairwise_rmse_sum_m"] / values["rows"],
+            "minimum_separation_m": values["minimum_separation_m"],
+            "outcome_counts": values["outcome_counts"],
+        }
+        for kind, values in template_metrics.items()
+        if values["rows"]
+    }
     parameters_unchanged = all(
         torch.equal(before[name], value) for name, value in actor.state_dict().items()
     )
@@ -197,6 +244,11 @@ def run_policy_evaluation(
     checks = {
         "loaded_requested_completed_update": manifest["completed_updates"] == expected_update,
         "deterministic_actor_used": True,
+        "all_declared_formation_templates_observed": set(template_measurements)
+        == set(env.formation_schedule.kinds),
+        "all_declared_templates_reached_formation_phase": all(
+            values["formation_rows"] > 0 for values in template_measurements.values()
+        ),
         "raw_row_count_is_exact": raw_rows == denominator,
         "observations_and_metrics_are_finite": nonfinite_rows == 0
         and bool(torch.isfinite(current_observation).all()),
@@ -235,6 +287,9 @@ def run_policy_evaluation(
         "phase_rows": phase_rows,
         "formation_phase_reached": phase_rows["formation"] > 0,
         "outcome_counts": outcome_counts,
+        "formation_schedule": env.formation_schedule.to_dict(),
+        "template_batch_index": expected_update,
+        "template_measurements": template_measurements,
         "measurements": {
             "team_reward_mean": reward_sum / denominator,
             "assigned_rmse_mean_m": assigned_sum / denominator,

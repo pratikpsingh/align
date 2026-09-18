@@ -79,6 +79,15 @@ class TaskTrainingBundleTests(unittest.TestCase):
             self.assertEqual(bundle[9].attempts, 2)
             self.assertEqual(bundle[10], values)
             self.assertFalse(bundle[13].enabled)
+            self.assertEqual(bundle[14].kinds, ("plane",))
+
+            values["formation_schedule"] = json.loads(
+                (root / "configs/formation-schedule-four-templates.json").read_text()
+            )
+            path.write_text(json.dumps(values))
+            scheduled = load_bundle(path)
+            self.assertEqual(scheduled[14].kinds, ("cube", "sphere", "pyramid", "plane"))
+            values.pop("formation_schedule")
 
             values.pop("recovery")
             path.write_text(json.dumps(values))

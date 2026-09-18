@@ -31,5 +31,8 @@ Start here, then follow the numbered files in order. The prefixes describe readi
 25. [Critic normalization denominator floor](25-critic-normalization-floor.md): historical candidate calibration, schema-2 transform, compatibility, and GPU acceptance.
 26. [Segmented training](26-segmented-training.md): fresh-process update ranges, exact checkpoint lineage, normalization continuity, and bounded acceptance.
 27. [Interrupted segmented-training recovery](27-interrupted-segment-recovery.md): partial-rollout fault injection, immutable source evidence, checkpoint-prefix recovery, and audit rules.
+28. [Target-conditioned multi-template training](28-target-conditioned-template-training.md): deterministic cube/sphere/pyramid/plane scheduling, local target conditioning, and per-template evidence.
+29. [Matched formation-training comparison](29-matched-template-comparison.md): equal-budget plane specialist and four-template generalist protocol, commands, audits, and result limits.
+30. [Formation-phase learning diagnosis](30-formation-phase-diagnosis.md): CPU-only phase windows, action/separation checks, accepted result, and observability gaps.
 
 For beginner explanations, begin with the [learning index](../learning/00-README.md). For research scope and intended implementation, use the [planning index](../plans/00-README.md). Setup instructions distinguish CPU contracts, implemented simulator behavior, and pending research validation.

@@ -4,7 +4,7 @@ Read this index first, then follow the two-digit filename prefixes in ascending 
 
 Prepared: 2026-09-15
 
-Status: the uv-managed package, machine diagnostic, local logging, and report artifacts are implemented and checked on CPU. Public [installation](../docs/01-installation.md), [diagnostic](../docs/02-diagnostics.md), and [development](../docs/05-development.md) instructions now exist. Python 3.12 remains the development pin; the isolated Isaac Sim startup/CUDA probe, deterministic controller checks, one/four-world OmniDrones task acceptance, recurrent learner components, and reset-mode checkpoint recovery have passed on the lab. A bounded two-process task-connected simulator training and resume check has passed; sustained stable learning and independent evaluation remain pending.
+Status (2026-09-18): the uv-managed package, pinned OmniDrones runtime, controller and vector task, recurrent MAPPO, segmented recovery, and frozen-policy evaluation have passed their documented lab checks. Two matched 12-update training arms and a raw-audited formation-phase diagnosis have passed; all 64 completed evaluated flights timed out, so learned formation success remains open. See the [unresolved evidence register](09-unresolved-evidence.md) for the next measurements. Public [installation](../docs/01-installation.md), [diagnostic](../docs/02-diagnostics.md), and [development](../docs/05-development.md) instructions remain the setup entry points.
 
 ## Direction
 
@@ -24,6 +24,7 @@ Paper-03 is a useful simulator/code reference, but reproducing its algorithm and
 | [Lab runtime assessment](06-lab-runtime-assessment.md) | Received hardware evidence, upstream compatibility findings, and candidate simulator setup |
 | [Training recovery](07-training-recovery.md) | Power-loss recovery, checkpoint contents, atomic writes, and restart semantics |
 | [Experiments and artifacts](08-experiments-and-artifacts.md) | Run records, metrics, graphs, submission figures/tables, and simulation playback |
+| [Unresolved evidence and capability questions](09-unresolved-evidence.md) | Live gaps, supporting run IDs, and the next observable closure for each retained capability |
 
 Begin the conceptual reading at [Project overview](../learning/01-project-overview.md). The [learning index](../learning/00-README.md) will grow with implementation. [Project working agreement](../AGENTS.md) records ongoing development requirements.
 

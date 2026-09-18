@@ -37,6 +37,15 @@ class LearningCurveConfigTests(unittest.TestCase):
         self.assertEqual(config.segment_ranges(), ((0, 4), (4, 8), (8, 12)))
         self.assertEqual(config.planned_restart_after_segment, 1)
 
+    def test_multi_template_probe_declares_bounded_exact_milestones(self):
+        values = json.loads(
+            (self.root / "configs/learning-curve-multi-template-probe.json").read_text()
+        )
+        config = LearningCurveConfig.from_dict(values)
+        self.assertEqual(config.updates_per_seed, 4)
+        self.assertEqual(config.evaluation_milestones, (0, 2, 4))
+        self.assertEqual(config.segment_ranges(), ((0, 4),))
+
     def test_invalid_segment_contracts_are_rejected(self):
         values = json.loads((self.root / "configs/learning-curve-segmented.json").read_text())
         for changed in (
@@ -165,6 +174,55 @@ class LearningCurveSummaryTests(unittest.TestCase):
         )
         self.assertEqual(result["evaluation_trends"][-1]["outcome_counts"]["1"], 2)
         self.assertTrue(result["evaluation_trends"][0]["formation_phase_reached_all_seeds"])
+
+    def test_summary_aggregates_declared_template_metrics(self):
+        items = [self._item(41), self._item(73)]
+        kinds = ("cube", "sphere", "pyramid", "plane")
+        for item in items:
+            for row in item["train"]["metrics"]["measurements"]:
+                row["template_measurements"] = {
+                    kind: {
+                        "rows": 192,
+                        "formation_rows": 50,
+                        "team_reward_mean": -0.1,
+                        "assigned_rmse_mean_m": 1.0,
+                        "pairwise_rmse_mean_m": 0.2,
+                        "minimum_separation_m": 0.7,
+                        "outcomes": 0,
+                    }
+                    for kind in kinds
+                }
+            for evaluation in item["evaluations"]:
+                evaluation["metrics"]["template_measurements"] = {
+                    kind: {
+                        "rows": 800,
+                        "formation_rows": 250,
+                        "team_reward_mean": -0.1,
+                        "assigned_rmse_mean_m": 1.0,
+                        "pairwise_rmse_mean_m": 0.2,
+                        "minimum_separation_m": 0.7,
+                        "outcome_counts": {str(code): int(code == 6) for code in range(1, 7)},
+                    }
+                    for kind in kinds
+                }
+        result = summarize_learning_curve(items, self.config)
+        self.assertEqual(len(result["template_training_trends"]), 10 * 4)
+        self.assertEqual(len(result["template_evaluation_trends"]), 3 * 4)
+        self.assertEqual(
+            {row["formation_kind"] for row in result["template_evaluation_trends"]},
+            set(kinds),
+        )
+        with TemporaryDirectory() as directory:
+            output = Path(directory)
+            write_learning_curve_tables(output, result)
+            self.assertEqual(
+                len((output / "template-training-curve.csv").read_text().splitlines()),
+                1 + 10 * 4 * 4,
+            )
+            self.assertEqual(
+                len((output / "template-evaluation-curve.csv").read_text().splitlines()),
+                1 + 3 * 4 * 4,
+            )
 
     def test_summary_tables_have_declared_long_form_rows(self):
         result = summarize_learning_curve([self._item(41), self._item(73)], self.config)

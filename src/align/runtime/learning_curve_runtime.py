@@ -109,6 +109,76 @@ def summarize_learning_curve(items: list[dict], config: LearningCurveConfig) -> 
         )
     if len(set(all_checkpoint_ids)) != len(all_checkpoint_ids):
         raise ValueError("checkpoint evaluations must load distinct per-seed milestones")
+    evaluation_template_presence = [
+        "template_measurements" in evaluation["metrics"]
+        for item in items
+        for evaluation in item["evaluations"]
+    ]
+    if any(evaluation_template_presence) and not all(evaluation_template_presence):
+        raise ValueError("template evaluation measurements are missing from some milestones")
+    evaluation_template_trends = []
+    if all(evaluation_template_presence):
+        for milestone in config.evaluation_milestones:
+            evaluations = [
+                next(
+                    row["metrics"]
+                    for row in item["evaluations"]
+                    if row["completed_update"] == milestone
+                )
+                for item in items
+            ]
+            declared = tuple(evaluations[0]["template_measurements"])
+            if any(tuple(row["template_measurements"]) != declared for row in evaluations):
+                raise ValueError("template evaluation coverage differs across seeds")
+            for kind in declared:
+                metrics = [row["template_measurements"][kind] for row in evaluations]
+                if any(row["rows"] <= 0 or row["formation_rows"] <= 0 for row in metrics):
+                    raise ValueError("template did not reach formation phase during evaluation")
+                evaluation_template_trends.append(
+                    {
+                        "completed_update": milestone,
+                        "formation_kind": kind,
+                        "seed_count": len(metrics),
+                        "rows": sum(row["rows"] for row in metrics),
+                        "formation_rows": sum(row["formation_rows"] for row in metrics),
+                        "outcome_counts": {
+                            str(code): sum(row["outcome_counts"][str(code)] for row in metrics)
+                            for code in range(1, 7)
+                        },
+                        "team_reward_mean": _bounds(metrics, "team_reward_mean"),
+                        "assigned_rmse_mean_m": _bounds(metrics, "assigned_rmse_mean_m"),
+                        "pairwise_rmse_mean_m": _bounds(metrics, "pairwise_rmse_mean_m"),
+                        "minimum_separation_m": _bounds(metrics, "minimum_separation_m"),
+                    }
+                )
+
+    training_template_presence = ["template_measurements" in row for row in training_rows]
+    if any(training_template_presence) and not all(training_template_presence):
+        raise ValueError("template training measurements are missing from some updates")
+    training_template_trends = []
+    if all(training_template_presence):
+        declared = tuple(training_rows[0]["template_measurements"])
+        for update in range(1, config.updates_per_seed + 1):
+            rows = [row for row in training_rows if row["completed_update"] == update]
+            if any(tuple(row["template_measurements"]) != declared for row in rows):
+                raise ValueError("template training coverage differs across seeds")
+            for kind in declared:
+                metrics = [row["template_measurements"][kind] for row in rows]
+                if any(row["rows"] <= 0 or row["formation_rows"] <= 0 for row in metrics):
+                    raise ValueError("template did not reach formation phase during training")
+                training_template_trends.append(
+                    {
+                        "completed_update": update,
+                        "formation_kind": kind,
+                        "seed_count": len(metrics),
+                        "rows": sum(row["rows"] for row in metrics),
+                        "formation_rows": sum(row["formation_rows"] for row in metrics),
+                        "team_reward_mean": _bounds(metrics, "team_reward_mean"),
+                        "assigned_rmse_mean_m": _bounds(metrics, "assigned_rmse_mean_m"),
+                        "pairwise_rmse_mean_m": _bounds(metrics, "pairwise_rmse_mean_m"),
+                        "minimum_separation_m": _bounds(metrics, "minimum_separation_m"),
+                    }
+                )
 
     distribution_presence = ["critic_distribution" in row for row in training_rows]
     if any(distribution_presence) and not all(distribution_presence):
@@ -171,8 +241,10 @@ def summarize_learning_curve(items: list[dict], config: LearningCurveConfig) -> 
             training_rows, "max_critic_gradient_norm_before_clip"
         ),
         "training_trends": training_trends,
+        "template_training_trends": training_template_trends,
         "critic_distribution_trends": distribution_trends,
         "evaluation_trends": trends,
+        "template_evaluation_trends": evaluation_template_trends,
     }
 
 
@@ -278,6 +350,46 @@ def write_learning_curve_tables(run: Path, summary: dict) -> None:
                             **row[metric],
                         }
                     )
+    template_metrics = (
+        "team_reward_mean",
+        "assigned_rmse_mean_m",
+        "pairwise_rmse_mean_m",
+        "minimum_separation_m",
+    )
+    for filename, trend_key in (
+        ("template-training-curve.csv", "template_training_trends"),
+        ("template-evaluation-curve.csv", "template_evaluation_trends"),
+    ):
+        if summary[trend_key]:
+            with (run / filename).open("x", newline="", encoding="utf-8") as stream:
+                writer = csv.DictWriter(
+                    stream,
+                    fieldnames=(
+                        "completed_update",
+                        "formation_kind",
+                        "seed_count",
+                        "rows",
+                        "formation_rows",
+                        "metric",
+                        "minimum",
+                        "maximum",
+                        "mean",
+                    ),
+                )
+                writer.writeheader()
+                for row in summary[trend_key]:
+                    for metric in template_metrics:
+                        writer.writerow(
+                            {
+                                "completed_update": row["completed_update"],
+                                "formation_kind": row["formation_kind"],
+                                "seed_count": row["seed_count"],
+                                "rows": row["rows"],
+                                "formation_rows": row["formation_rows"],
+                                "metric": metric,
+                                **row[metric],
+                            }
+                        )
     if summary["critic_distribution_trends"]:
         with (run / "critic-distribution-curve.csv").open(
             "x", newline="", encoding="utf-8"
@@ -411,6 +523,7 @@ def run_main(
     *,
     default_curve_config: str = "learning-curve-baseline.json",
     run_category: str = "learning-curve",
+    default_formation_schedule_config: str | None = None,
 ) -> int:
     parser = argparse.ArgumentParser(
         description="Run bounded training with fresh-process checkpoint evaluations."
@@ -427,6 +540,7 @@ def run_main(
     parser.add_argument("--recovery-config", type=Path)
     parser.add_argument("--training-config", type=Path)
     parser.add_argument("--critic-normalization-config", type=Path)
+    parser.add_argument("--formation-schedule-config", type=Path)
     parser.add_argument("--learning-curve-config", type=Path)
     parser.add_argument("--build-report", type=Path)
     parser.add_argument("--timeout", type=int, default=1800)
@@ -451,6 +565,8 @@ def run_main(
     args.task_config = args.task_config or root / "configs/recurrent-stability-task.json"
     args.rollout_config = args.rollout_config or root / "configs/recurrent-stability-rollout.json"
     args.ppo_config = args.ppo_config or root / "configs/recurrent-ppo-selected.json"
+    if args.formation_schedule_config is None and default_formation_schedule_config is not None:
+        args.formation_schedule_config = root / "configs" / default_formation_schedule_config
     curve = _load(
         args.learning_curve_config or root / "configs" / default_curve_config,
         LearningCurveConfig,
