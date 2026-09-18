@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import csv
 import math
+from contextlib import ExitStack
 from pathlib import Path
 
 import torch
@@ -23,6 +24,8 @@ from align.learning.training_config import TaskTrainingConfig
 from align.policies.config import RecurrentPolicyConfig
 from align.policies.torch_recurrent import CentralizedRecurrentCritic, SharedRecurrentActor
 from align.simulation.recurrent_collector import zero_done_actor_memory
+from align.tasks.policy_telemetry import TELEMETRY_COLUMNS, VECTOR_FIELDS
+from align.tasks.reward import COMPONENT_NAMES
 
 EVALUATION_COLUMNS = (
     "evaluation_step",
@@ -63,6 +66,7 @@ def run_policy_evaluation(
     stability_config: StabilityConfig,
     event,
     checkpoint_update: int | None = None,
+    telemetry: bool = False,
 ) -> dict:
     """Load one requested checkpoint and execute deterministic actor means only."""
     actor = SharedRecurrentActor(policy_config).to(env.device)
@@ -131,9 +135,21 @@ def run_policy_evaluation(
         for kind in env.formation_schedule.kinds
     }
     raw_rows = 0
-    with (output / "evaluation.csv").open("x", newline="", encoding="utf-8") as stream:
+    telemetry_rows = 0
+    with ExitStack() as stack:
+        stream = stack.enter_context(
+            (output / "evaluation.csv").open("x", newline="", encoding="utf-8")
+        )
         writer = csv.DictWriter(stream, fieldnames=EVALUATION_COLUMNS)
         writer.writeheader()
+        telemetry_stream = None
+        telemetry_writer = None
+        if telemetry:
+            telemetry_stream = stack.enter_context(
+                (output / "policy-telemetry.csv").open("x", newline="", encoding="utf-8")
+            )
+            telemetry_writer = csv.DictWriter(telemetry_stream, fieldnames=TELEMETRY_COLUMNS)
+            telemetry_writer.writeheader()
         with torch.no_grad():
             for step in range(stability_config.evaluation_steps):
                 result = actor.act(
@@ -143,6 +159,7 @@ def run_policy_evaluation(
                     deterministic=True,
                 )
                 actions = result.action[:, 0].reshape(num_envs, num_agents, -1)
+                pre_state = env.state.clone() if telemetry else None
                 output_td = env.step_actions(actions)
                 terminated = output_td["terminated"].squeeze(-1).clone()
                 truncated = output_td["truncated"].squeeze(-1).clone()
@@ -206,7 +223,68 @@ def run_policy_evaluation(
                         }
                     )
                     raw_rows += 1
+                    if telemetry_writer is not None:
+                        fields = {
+                            "pre_position": pre_state[env_id, :, :3],
+                            "pre_velocity": pre_state[env_id, :, 7:10],
+                            "position": env.state[env_id, :, :3],
+                            "velocity": env.state[env_id, :, 7:10],
+                            "target": env.last_targets[env_id],
+                            "command": env.commanded_velocities[env_id],
+                        }
+                        for agent_id in range(num_agents):
+                            row = {
+                                "evaluation_step": step,
+                                "env_id": env_id,
+                                "episode_step": int(progress[env_id].item()),
+                                "phase": phase,
+                                "formation_kind": kind,
+                                "agent_id": agent_id,
+                                "agent_reward": float(
+                                    output_td[("agents", "reward")][env_id, agent_id].item()
+                                ),
+                                "team_reward": float(team_rewards[env_id].item()),
+                                "contact_force_n": float(
+                                    env.contact_force[env_id, agent_id].item()
+                                ),
+                            }
+                            for group, names in VECTOR_FIELDS.items():
+                                row.update(
+                                    zip(names, fields[group][agent_id].tolist(), strict=True)
+                                )
+                            row.update(
+                                zip(
+                                    ("qw", "qx", "qy", "qz"),
+                                    env.state[env_id, agent_id, 3:7].tolist(),
+                                    strict=True,
+                                )
+                            )
+                            for prefix, values in (
+                                ("action", actions_cpu[env_id, agent_id]),
+                                ("rotor_raw", env.raw_rotor_action[env_id, agent_id]),
+                                ("rotor_applied", env.applied_rotor_action[env_id, agent_id]),
+                            ):
+                                row.update(
+                                    {
+                                        f"{prefix}_{i}": float(value)
+                                        for i, value in enumerate(values)
+                                    }
+                                )
+                            for prefix, values in (
+                                ("raw", env.last_reward_raw_components[env_id, agent_id]),
+                                ("weighted", env.last_reward_components[env_id, agent_id]),
+                            ):
+                                row.update(
+                                    {
+                                        f"{prefix}_{name}": float(value)
+                                        for name, value in zip(COMPONENT_NAMES, values, strict=True)
+                                    }
+                                )
+                            telemetry_writer.writerow(row)
+                            telemetry_rows += 1
                 stream.flush()
+                if telemetry_stream is not None:
+                    telemetry_stream.flush()
                 action_min = min(action_min, float(actions.min().item()))
                 action_max = max(action_max, float(actions.max().item()))
                 reward_sum += float(team_rewards.sum().item())
@@ -250,6 +328,7 @@ def run_policy_evaluation(
             values["formation_rows"] > 0 for values in template_measurements.values()
         ),
         "raw_row_count_is_exact": raw_rows == denominator,
+        "telemetry_row_count_is_exact": not telemetry or telemetry_rows == denominator * num_agents,
         "observations_and_metrics_are_finite": nonfinite_rows == 0
         and bool(torch.isfinite(current_observation).all()),
         "actions_are_bounded": action_min >= -1.0 and action_max <= 1.0,
@@ -284,6 +363,7 @@ def run_policy_evaluation(
         "critic_normalization_updates": 0,
         "evaluation_steps": stability_config.evaluation_steps,
         "raw_rows": raw_rows,
+        "telemetry_rows": telemetry_rows,
         "phase_rows": phase_rows,
         "formation_phase_reached": phase_rows["formation"] > 0,
         "outcome_counts": outcome_counts,

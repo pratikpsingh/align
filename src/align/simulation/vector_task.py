@@ -258,6 +258,7 @@ def run(
     source_identity: str | None = None,
     runtime_identity: str | None = None,
     evaluation_update: int | None = None,
+    policy_telemetry: bool = False,
     training_start_update: int = 0,
     training_stop_update: int | None = None,
     fault_at_update: int | None = None,
@@ -307,6 +308,8 @@ def run(
         scenario != "evaluation" or type(evaluation_update) is not int or evaluation_update < 0
     ):
         raise ValueError("evaluation_update must be a nonnegative integer used only for evaluation")
+    if policy_telemetry and scenario != "evaluation":
+        raise ValueError("policy telemetry is valid only for evaluation")
     if scenario != "stability" and (training_start_update != 0 or training_stop_update is not None):
         raise ValueError("training update ranges are valid only for stability")
     if (fault_at_update is None) != (fault_after_rollout_step is None):
@@ -491,6 +494,7 @@ def run(
                 self.last_actions = None
                 self.commanded_velocities = None
                 self.last_reward_components = None
+                self.last_reward_raw_components = None
                 self.last_team_reward = None
                 self.last_targets = None
                 self.last_reward_phase = None
@@ -924,6 +928,7 @@ def run(
                 )
                 weighted = raw * weights * time_scales
                 per_agent_reward = weighted.sum(dim=-1)
+                self.last_reward_raw_components = raw
                 self.last_reward_components = weighted
                 self.last_team_reward = per_agent_reward.mean(dim=-1)
                 self.reward_distance_memory[:] = target_distances
@@ -1159,6 +1164,7 @@ def run(
                 stability_config=stability,
                 event=event,
                 checkpoint_update=evaluation_update,
+                telemetry=policy_telemetry,
             )
             save_json(output / "metrics.json", metrics)
             result.update(
@@ -1542,6 +1548,7 @@ def main(argv=None):
     parser.add_argument("--attempt-id")
     parser.add_argument("--checkpoint-directory", type=Path)
     parser.add_argument("--evaluation-update", type=int)
+    parser.add_argument("--policy-telemetry", action="store_true")
     parser.add_argument("--training-start-update", type=int, default=0)
     parser.add_argument("--training-stop-update", type=int)
     parser.add_argument("--fault-at-update", type=int)
@@ -1563,6 +1570,7 @@ def main(argv=None):
         source_identity=args.source_identity,
         runtime_identity=args.runtime_identity,
         evaluation_update=args.evaluation_update,
+        policy_telemetry=args.policy_telemetry,
         training_start_update=args.training_start_update,
         training_stop_update=args.training_stop_update,
         fault_at_update=args.fault_at_update,

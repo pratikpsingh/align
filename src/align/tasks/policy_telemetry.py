@@ -1,0 +1,279 @@
+"""CPU-only schema and audit for frozen-policy drone telemetry."""
+
+from __future__ import annotations
+
+import csv
+import math
+from collections import defaultdict
+from pathlib import Path
+
+from align.tasks.reward import COMPONENT_NAMES, TIME_INTEGRATED_COMPONENTS
+
+VECTOR_FIELDS = {
+    "pre_position": ("pre_x_m", "pre_y_m", "pre_z_m"),
+    "pre_velocity": ("pre_vx_m_s", "pre_vy_m_s", "pre_vz_m_s"),
+    "position": ("x_m", "y_m", "z_m"),
+    "velocity": ("vx_m_s", "vy_m_s", "vz_m_s"),
+    "target": ("target_x_m", "target_y_m", "target_z_m"),
+    "command": ("command_vx_m_s", "command_vy_m_s", "command_vz_m_s"),
+}
+TELEMETRY_COLUMNS = (
+    "evaluation_step",
+    "env_id",
+    "episode_step",
+    "phase",
+    "formation_kind",
+    "agent_id",
+    *(name for fields in VECTOR_FIELDS.values() for name in fields),
+    "qw",
+    "qx",
+    "qy",
+    "qz",
+    *(f"action_{i}" for i in range(4)),
+    *(f"rotor_raw_{i}" for i in range(4)),
+    *(f"rotor_applied_{i}" for i in range(4)),
+    *(f"raw_{name}" for name in COMPONENT_NAMES),
+    *(f"weighted_{name}" for name in COMPONENT_NAMES),
+    "agent_reward",
+    "team_reward",
+    "contact_force_n",
+)
+
+
+def audit_telemetry(
+    telemetry_path: Path,
+    evaluation_path: Path,
+    *,
+    num_agents: int,
+    max_speed_m_s: float,
+    tolerance: float = 3e-4,
+    reward_config: dict | None = None,
+) -> dict:
+    """Cross-check each raw drone transition against aggregate evaluation rows."""
+    if num_agents < 2 or max_speed_m_s <= 0 or tolerance <= 0:
+        raise ValueError("invalid telemetry audit parameters")
+    with evaluation_path.open(newline="", encoding="utf-8") as stream:
+        aggregate = {
+            (int(row["evaluation_step"]), int(row["env_id"])): row for row in csv.DictReader(stream)
+        }
+    groups: dict[tuple[int, int], list[dict]] = defaultdict(list)
+    with telemetry_path.open(newline="", encoding="utf-8") as stream:
+        reader = csv.DictReader(stream)
+        if tuple(reader.fieldnames or ()) != TELEMETRY_COLUMNS:
+            raise ValueError("telemetry schema mismatch")
+        for row in reader:
+            groups[int(row["evaluation_step"]), int(row["env_id"])].append(row)
+    if not aggregate or set(groups) != set(aggregate):
+        raise ValueError("missing or unexpected environment steps")
+    formation_rows = 0
+    aligned_commands = 0
+    nonzero_commands = 0
+    closing_velocity = 0
+    for key, rows in groups.items():
+        reference = aggregate[key]
+        if len(rows) != num_agents or {int(r["agent_id"]) for r in rows} != set(range(num_agents)):
+            raise ValueError(f"missing or duplicate agents at {key}")
+        positions, targets, rewards = [], [], []
+        for row in rows:
+            if (row["phase"], row["formation_kind"], row["episode_step"]) != (
+                reference["phase"],
+                reference["formation_kind"],
+                reference["episode_step"],
+            ):
+                raise ValueError(f"phase or template mismatch at {key}")
+            values = [
+                float(row[name])
+                for name in TELEMETRY_COLUMNS
+                if name not in {"phase", "formation_kind"}
+            ]
+            if not all(math.isfinite(v) for v in values):
+                raise ValueError(f"nonfinite telemetry at {key}")
+            vectors = {
+                name: tuple(float(row[field]) for field in fields)
+                for name, fields in VECTOR_FIELDS.items()
+            }
+            positions.append(vectors["position"])
+            targets.append(vectors["target"])
+            weights = [float(row[f"weighted_{name}"]) for name in COMPONENT_NAMES]
+            if reward_config is not None:
+                for name in COMPONENT_NAMES:
+                    expected = float(row[f"raw_{name}"]) * float(reward_config[f"{name}_weight"])
+                    if name in TIME_INTEGRATED_COMPONENTS:
+                        expected *= float(reward_config["control_dt_seconds"])
+                    if abs(expected - float(row[f"weighted_{name}"])) > tolerance:
+                        raise ValueError(f"reward weighting mismatch at {key}: {name}")
+            agent_reward = float(row["agent_reward"])
+            if abs(math.fsum(weights) - agent_reward) > tolerance:
+                raise ValueError(f"reward components do not close at {key}")
+            rewards.append(agent_reward)
+            action = [float(row[f"action_{i}"]) for i in range(4)]
+            if any(abs(a) > 1.0 + tolerance for a in action):
+                raise ValueError(f"unbounded action at {key}")
+            norm = math.sqrt(math.fsum(a * a for a in action[:3]))
+            expected_command = tuple(
+                a / norm * abs(action[3]) * max_speed_m_s if norm > 1e-8 else 0.0
+                for a in action[:3]
+            )
+            if (
+                max(abs(a - b) for a, b in zip(expected_command, vectors["command"], strict=True))
+                > tolerance
+            ):
+                raise ValueError(f"action-to-command mismatch at {key}")
+            for i in range(4):
+                raw = float(row[f"rotor_raw_{i}"])
+                applied = float(row[f"rotor_applied_{i}"])
+                if abs(min(1.0, max(-1.0, raw)) - applied) > tolerance:
+                    raise ValueError(f"rotor clamp mismatch at {key}")
+            if row["phase"] == "formation":
+                formation_rows += 1
+                command = vectors["command"]
+                error = tuple(t - p for t, p in zip(targets[-1], positions[-1], strict=True))
+                desired = tuple(
+                    c - v for c, v in zip(command, vectors["pre_velocity"], strict=True)
+                )
+                response = tuple(
+                    v - p for v, p in zip(vectors["velocity"], vectors["pre_velocity"], strict=True)
+                )
+                if math.sqrt(math.fsum(c * c for c in command)) > 1e-6:
+                    nonzero_commands += 1
+                    aligned_commands += (
+                        math.fsum(c * e for c, e in zip(command, error, strict=True)) > 0
+                    )
+                    closing_velocity += (
+                        math.fsum(d * r for d, r in zip(desired, response, strict=True)) > 0
+                    )
+        if abs(math.fsum(rewards) / num_agents - float(reference["team_reward"])) > tolerance:
+            raise ValueError(f"team reward mismatch at {key}")
+        assigned = math.sqrt(
+            math.fsum(math.dist(p, t) ** 2 for p, t in zip(positions, targets, strict=True))
+            / num_agents
+        )
+        pairs = [(i, j) for i in range(num_agents) for j in range(i + 1, num_agents)]
+        pairwise = math.sqrt(
+            math.fsum(
+                (math.dist(positions[i], positions[j]) - math.dist(targets[i], targets[j])) ** 2
+                for i, j in pairs
+            )
+            / len(pairs)
+        )
+        if (
+            abs(assigned - float(reference["assigned_rmse_m"])) > tolerance
+            or abs(pairwise - float(reference["pairwise_rmse_m"])) > tolerance
+        ):
+            raise ValueError(f"formation geometry mismatch at {key}")
+    return {
+        "status": "passed",
+        "environment_rows": len(groups),
+        "drone_rows": sum(map(len, groups.values())),
+        "formation_drone_rows": formation_rows,
+        "nonzero_formation_commands": nonzero_commands,
+        "target_aligned_command_fraction": aligned_commands / nonzero_commands
+        if nonzero_commands
+        else None,
+        "positive_velocity_response_fraction": closing_velocity / nonzero_commands
+        if nonzero_commands
+        else None,
+        "reward_and_geometry_recomputed": True,
+    }
+
+
+def summarize_telemetry(
+    telemetry_path: Path,
+    *,
+    max_speed_m_s: float,
+    control_dt_seconds: float,
+    max_episode_steps: int,
+    success_dwell_steps: int,
+) -> dict:
+    """Summarize phase behavior and a commanded-speed reachability bound.
+
+    The bound concerns the declared velocity command. It is not a guarantee
+    about realized motion when the inner controller overshoots or is disturbed.
+    """
+    if (
+        max_speed_m_s <= 0
+        or control_dt_seconds <= 0
+        or max_episode_steps <= 0
+        or not 0 < success_dwell_steps <= max_episode_steps
+    ):
+        raise ValueError("invalid reachability contract")
+    phases: dict[str, dict] = {}
+    first_formation: dict[tuple[int, int], dict] = {}
+    with telemetry_path.open(newline="", encoding="utf-8") as stream:
+        reader = csv.DictReader(stream)
+        if tuple(reader.fieldnames or ()) != TELEMETRY_COLUMNS:
+            raise ValueError("telemetry schema mismatch")
+        for row in reader:
+            phase = row["phase"]
+            if phase not in ("ground", "takeoff", "formation"):
+                raise ValueError("unknown reward phase")
+            summary = phases.setdefault(
+                phase,
+                {
+                    "drone_rows": 0,
+                    "target_distance_sum_m": 0.0,
+                    "command_speed_sum_m_s": 0.0,
+                    "realized_speed_sum_m_s": 0.0,
+                    "command_toward_target_rows": 0,
+                    **{f"weighted_{name}_sum": 0.0 for name in COMPONENT_NAMES},
+                },
+            )
+            summary["drone_rows"] += 1
+            position = tuple(float(row[name]) for name in VECTOR_FIELDS["position"])
+            target = tuple(float(row[name]) for name in VECTOR_FIELDS["target"])
+            command = tuple(float(row[name]) for name in VECTOR_FIELDS["command"])
+            velocity = tuple(float(row[name]) for name in VECTOR_FIELDS["velocity"])
+            summary["target_distance_sum_m"] += math.dist(position, target)
+            summary["command_speed_sum_m_s"] += math.dist(command, (0.0, 0.0, 0.0))
+            summary["realized_speed_sum_m_s"] += math.dist(velocity, (0.0, 0.0, 0.0))
+            summary["command_toward_target_rows"] += (
+                math.fsum(c * (t - p) for c, t, p in zip(command, target, position, strict=True))
+                > 0
+            )
+            for name in COMPONENT_NAMES:
+                summary[f"weighted_{name}_sum"] += float(row[f"weighted_{name}"])
+            if phase == "formation":
+                key = (int(row["env_id"]), int(row["agent_id"]))
+                first_formation.setdefault(key, row)
+    if not first_formation:
+        raise ValueError("no formation-phase rows")
+    phase_means = {}
+    for phase, summary in phases.items():
+        count = summary["drone_rows"]
+        phase_means[phase] = {
+            "drone_rows": count,
+            "mean_target_distance_m": summary["target_distance_sum_m"] / count,
+            "mean_command_speed_m_s": summary["command_speed_sum_m_s"] / count,
+            "mean_realized_speed_m_s": summary["realized_speed_sum_m_s"] / count,
+            "command_toward_target_fraction": summary["command_toward_target_rows"] / count,
+            "mean_weighted_reward": {
+                name: summary[f"weighted_{name}_sum"] / count for name in COMPONENT_NAMES
+            },
+        }
+    latest_dwell_start = max_episode_steps - success_dwell_steps + 1
+    by_environment: dict[int, list[float]] = defaultdict(list)
+    available_steps = {}
+    for (env_id, _agent_id), row in first_formation.items():
+        steps = max(0, latest_dwell_start - int(row["episode_step"]))
+        available_steps[env_id] = steps
+        z_error = abs(float(row["target_z_m"]) - float(row["z_m"]))
+        by_environment[env_id].append(
+            max(0.0, z_error - steps * control_dt_seconds * max_speed_m_s)
+        )
+    return {
+        "phase_means": phase_means,
+        "latest_dwell_start_episode_step": latest_dwell_start,
+        "remaining_command_steps_at_first_formation": available_steps,
+        "maximum_commanded_travel_before_dwell_m": {
+            env_id: steps * control_dt_seconds * max_speed_m_s
+            for env_id, steps in available_steps.items()
+        },
+        "altitude_only_assigned_rmse_lower_bound_at_dwell_m": {
+            env_id: math.sqrt(math.fsum(error * error for error in errors) / len(errors))
+            for env_id, errors in by_environment.items()
+        },
+        "bound_assumption": (
+            "Velocity command magnitude never exceeds the configured maximum; "
+            "actual controller dynamics may differ."
+        ),
+    }
