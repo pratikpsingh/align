@@ -1,0 +1,8 @@
+{
+  "clip": 5.0,
+  "enabled": true,
+  "epsilon": 1e-06,
+  "minimum_standard_deviation": 0.025,
+  "schema_version": 2,
+  "warmup_steps": 2304
+}

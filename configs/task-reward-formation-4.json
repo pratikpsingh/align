@@ -1,0 +1,17 @@
+{
+  "contact_force_threshold_n": 0.01,
+  "contact_weight": 2.0,
+  "control_dt_seconds": 0.01,
+  "distance_scale_m": 1.0,
+  "effort_weight": 0.01,
+  "formation_weight": 4.0,
+  "max_speed_m_s": 0.5,
+  "minimum_separation_m": 0.55,
+  "progress_weight": 2.0,
+  "schema_version": 1,
+  "separation_weight": 2.0,
+  "settling_radius_m": 0.5,
+  "settling_weight": 0.2,
+  "smoothness_weight": 0.05,
+  "tracking_weight": 1.0
+}

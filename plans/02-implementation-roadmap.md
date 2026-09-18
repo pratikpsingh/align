@@ -77,15 +77,24 @@ Dependencies: verified recurrent learning, recoverable runs, and a frozen basic 
 - [ ] Train one target-conditioned actor on the selected formation templates and ground-to-formation task.
   - [x] The deterministic four-template scheduler, unchanged local target conditioning, per-template raw metrics, recurrent PPO/checkpoint path, and frozen evaluation path passed live run `20260917T232002.612950IST-6bc40009` across two seeds, eight optimizer updates, and six exact-checkpoint evaluations.
   - [ ] Establish successful, stable formation behavior. The matched two-arm, two-seed 12-update run passed but all 64 evaluated environment episodes timed out; final plane assigned error remained about 1.38 m versus a 0.10 m tolerance. Diagnose formation-phase trajectories, reward contributions, and controller/action behavior before increasing the budget.
+  - [x] Establish a task/controller feasibility reference before changing PPO. GPU run `20260918T170533.567052IST-8804df3e` passed: exact-target proportional control timed out 4/4 under the 800-step schedule but succeeded safely 4/4 under the 2,350-step schedule. This does not satisfy learned formation behavior.
+  - [x] Run the matched 2,350-step plane training/evaluation probe with a 2,304-step rollout, four updates, and two seeds. GPU run `20260918T172025.554059IST-f5bd6176` passed all launcher/checkpoint checks and collected 3,016 formation rows per update per seed; all 24 frozen evaluations timed out, and seed 41 update 4 worsened pairwise error and separation. Learned formation success remains open.
+  - [x] Run a one-variable `formation_weight: 1→4` ablation under the feasible plane protocol. Treatment `20260918T175806.992858IST-5f316c32` and paired raw audit `20260918T181524.100490IST-40b25b3b` passed; update-4 changes were mixed across two seeds and both arms had 0/24 successes.
+  - [x] Test a one-bound nonnegative speed-distribution arm against the saved action diagnosis. Same-image two-seed training and raw phase-aware comparison `20260918T222308.300182IST-9536d525` passed; the treatment had 0 successes, more contacts, and much less formation exposure. Keep this negative result and inspect takeoff contact/commands before another action change.
   - [x] Implement and execute an equal-budget plane-specialist versus four-template-generalist protocol. GPU arms `20260918T105406.233167IST-d74f8b47` and `20260918T111606.650830IST-7fb24d49` passed; comparison `20260918T115133.727696IST-e9186486` matched image/source/configuration and audited 48 training and 16 evaluation CSVs. Per-seed plane exposure was 36,864 versus 9,216 rows, so the result is equal-total-update rather than equal-plane-exposure.
   - [x] Diagnose saved frozen-policy formation phases without simulator replay. Run `20260918T120338.089896IST-b257083e` passed 64 reset-safe episode audits; final specialist assigned error changed only 1.6108→1.6083 m during formation while pairwise error worsened. Per-component rewards and realized controller motion remain unobserved; see [the evidence register](09-unresolved-evidence.md).
 - [ ] Enforce hard communication range/budget masks and record neighbor topology and message age.
 - [ ] Implement an explicit communication accounting model and neighbor-budget study, separating observation count from transmitted bytes.
   - [x] Add a CPU-only, saved-trajectory topology sweep and declared unicast/ideal-broadcast packet-byte proxies. Audit `20260918T165720.534716IST-80f3f426` passed over 2,210 snapshots; the policy trajectory was held fixed, so live budget effects and radio traffic remain unmeasured.
 - [ ] Implement waypoint advancement, settling/completion conditions, and direct-versus-waypoint evaluation.
+  - [x] Specify a fixed-ID 3 m route, all-drone arrival gate, and direct comparator on CPU. Reports `20260918T194225.716860IST-c4fbb2e0` and `20260918T194225.806203IST-df33a71a` passed geometry/envelope/deadline checks.
+  - [x] Wire per-world waypoint state to actor-visible and reward targets in the reference simulator path; record every gate and target, and add a host raw audit. The same-image 3 m four-leg and direct flights passed 4/4 reference worlds each (`20260918T203136.267774IST-11301294`, `20260918T203409.683700IST-ea8e4b7a`). Matched comparison `20260918T203648.005391IST-1e1603cc` passed; waypoint outcome took 11.88 s versus 9.66 s direct. Learned-policy execution and 5/10/20 m remain open.
 - [ ] Add commanded in-flight template transitions, feasible target motion, and transition-specific metrics.
+  - [x] Check fixed-ID plane→pyramid destination assignments with an analytic synchronous straight-line clearance bound. CPU run `20260918T183317.950631IST-60d31af2` found a 0.913 m clearance mapping where the ground-based mapping crosses.
+  - [x] Issue a same-group in-flight shape command and record physical trajectories. Narrow-pyramid run `20260918T184629.244290IST-ed69806b` switched all four worlds at step 2,600 but all timed out after three drones descended to ground level. A raised-center retry also failed. Widening only the destination horizontal footprint completed 4/4 deterministic reference worlds in `20260918T191219.165303IST-01ae5fca`, with 0.9998 m minimum post-command separation and 0.0448 m final-100-step assigned RMSE. A 10-second dwell run remained contact-free but timed out 4/4 with base-altitude bias; sustained holding and a learned-policy command remain open.
 - [ ] Evaluate the frozen actor on multiple swarm sizes; record infeasible geometry, memory limits, and failures explicitly.
 - [ ] Produce smoothing, communication, recurrence-correctness, and formation-reward ablations with controlled budgets.
+  - [x] Prepare and run the one-variable `formation_weight: 1→4` two-seed ablation. The same-image raw audit `20260918T181524.100490IST-40b25b3b` passed; the final changes were mixed and both arms had 0/24 successes.
 
 Acceptance: C01–C11 in [the claim register](01-scope-and-claims.md) have traceable code/configuration, checks, and result artifacts. Results may falsify a hypothesis; implementation completion does not imply a positive result.
 
@@ -93,10 +102,10 @@ Acceptance: C01–C11 in [the claim register](01-scope-and-claims.md) have trace
 
 Dependencies: a frozen actor and verified preprocessing/action contracts.
 
-- [ ] Export the actor, normalizers, recurrent-state specification, and input/action schema independently of the centralized critic.
-- [ ] Measure actual parameter counts, artifact bytes, inference latency, working memory, and recurrent memory.
+- [x] Export the actor, observation normalization scales, recurrent-state specification, and input/action schema independently of the centralized critic. Idle CPU export `20260918T181821.229353IST-a87fa712` passed a fresh artifact-only reload with exact action/memory parity.
+- [x] Measure actual parameter count, artifact bytes, CPU `actor.act` latency, whole-process verifier RSS, and recurrent-state bytes. The observed RSS delta includes runtime allocations and is not an isolated actor working set; see [actor export](../docs/37-actor-export-and-inference.md).
 - [ ] Evaluate any supported reduced-precision/compressed export against the original on the same observations and flight suite.
-- [ ] Distinguish desktop measurements, analytical embedded estimates, and measurements on actual target hardware.
+- [x] Label the accepted host CPU measurements separately from pending target-device timing, RAM, power, and flight validation.
 
 Acceptance: C12 has measured artifacts and clearly labeled limits. Do not present estimated firmware/RAM as an onboard deployment result.
 

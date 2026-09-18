@@ -1,0 +1,10 @@
+{
+  "schema_version": 3,
+  "source_kind": "plane",
+  "destination_kind": "pyramid",
+  "command_step": 2600,
+  "minimum_planned_separation_m": 0.55,
+  "maximum_search_agents": 8,
+  "destination_center_m": [0.0, 0.0, 1.75],
+  "destination_horizontal_scale": 2.0
+}

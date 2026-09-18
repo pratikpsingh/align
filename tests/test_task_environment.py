@@ -115,6 +115,59 @@ class BatchedTaskEnvironmentTests(unittest.TestCase):
         self.assertEqual(result.done, (True, True))
         self.assertEqual(result.reasons, ("separation_violation", "time_limit"))
 
+    def test_formation_ground_contact_is_a_flight_failure(self):
+        base = construction(
+            ground_settle_seconds=0.01,
+            takeoff_seconds=0.01,
+            formation_timeout_seconds=0.04,
+            dwell_seconds=0.01,
+        )
+        env = environment(num_envs=1, max_episode_steps=5, base=base)
+        positions = (env.layout.ground_positions_m,)
+        velocities = (repeated((0.0, 0.0, 0.0), 4),)
+        actions = (repeated((0.0, 0.0, 0.0, 0.0), 4),)
+        contacts = ((0.02, 0.0, 0.0, 0.0),)
+        ground = env.step(positions, velocities, actions, contacts)
+        takeoff = env.step(positions, velocities, actions, contacts)
+        formation = env.step(positions, velocities, actions, contacts)
+        self.assertEqual(ground.reasons, (None,))
+        self.assertEqual(takeoff.reasons, (None,))
+        self.assertEqual(formation.reasons, ("flight_contact",))
+        self.assertTrue(formation.rewards[0].airborne_contact[0])
+
+    def test_airborne_contact_latch_catches_takeoff_fall_and_resets_per_world(self):
+        base = construction(
+            ground_settle_seconds=0.01,
+            takeoff_seconds=0.03,
+            formation_timeout_seconds=0.04,
+            dwell_seconds=0.01,
+        )
+        env = environment(num_envs=2, max_episode_steps=10, base=base)
+        ground = env.layout.ground_positions_m
+        high = tuple((x, y, z + 0.5) for x, y, z in ground)
+        velocities = repeated(repeated((0.0, 0.0, 0.0), 4), 2)
+        actions = repeated(repeated((0.0, 0.0, 0.0, 0.0), 4), 2)
+        contact = ((0.02, 0.0, 0.0, 0.0),) * 2
+        no_contact = ((0.0,) * 4,) * 2
+
+        initial = env.step((ground, ground), velocities, actions, contact)
+        self.assertEqual(initial.reasons, (None, None))
+        risen = env.step((high, high), velocities, actions, no_contact)
+        self.assertEqual(risen.reasons, (None, None))
+        env.reset((0,))
+        fallen = env.step((ground, ground), velocities, actions, contact)
+        self.assertEqual(fallen.reward_phases, ("ground", "takeoff"))
+        self.assertEqual(fallen.reasons, (None, "flight_contact"))
+        self.assertFalse(fallen.rewards[0].airborne_contact[0])
+        self.assertTrue(fallen.rewards[1].airborne_contact[0])
+
+        env.reset((1,))
+        restarted = env.step((ground, ground), velocities, actions, no_contact)
+        self.assertEqual(restarted.reasons, (None, None))
+        env.reset((1,))
+        fresh_ground = env.step((ground, ground), velocities, actions, contact)
+        self.assertEqual(fresh_ground.reasons, (None, None))
+
     def test_phase_change_resets_reward_memory(self):
         base = construction(
             ground_settle_seconds=0.01,

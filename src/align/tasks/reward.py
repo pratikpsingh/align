@@ -146,7 +146,8 @@ def compute_step_reward(
 
     Formation uses mean all-pair distance distortion divided by target diameter
     squared. Per-agent totals are not summed across the swarm: ``team_reward`` is
-    their arithmetic mean.
+    their arithmetic mean. The legacy ``airborne`` argument indicates when a
+    contact is unsafe: once airborne or in the formation phase.
     """
     positions = _vectors(positions_m, 3, "positions_m")
     targets = _vectors(targets_m, 3, "targets_m")

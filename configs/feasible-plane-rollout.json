@@ -1,0 +1,13 @@
+{
+  "action_dim": 4,
+  "actor_observation_dim": 55,
+  "chunk_length": 16,
+  "critic_state_dim": 80,
+  "gae_lambda": 0.95,
+  "gamma": 0.99,
+  "horizon": 2304,
+  "num_agents": 4,
+  "num_envs": 4,
+  "recurrent_hidden_size": 256,
+  "recurrent_layers": 1
+}

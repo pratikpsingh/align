@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "command_step": 2600,
+  "goal_displacement_m": [3.0, 0.0, 0.0],
+  "maximum_leg_length_m": 0.75,
+  "arrival_radius_m": 0.15,
+  "maximum_arrival_speed_m_s": 0.2,
+  "minimum_arrival_separation_m": 0.55,
+  "arrival_dwell_steps": 20
+}

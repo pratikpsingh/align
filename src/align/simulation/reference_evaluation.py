@@ -14,6 +14,23 @@ from align.simulation.policy_evaluation import EVALUATION_COLUMNS, write_telemet
 from align.tasks.policy_telemetry import TELEMETRY_COLUMNS
 
 PHASE_NAMES = ("ground", "takeoff", "formation")
+WAYPOINT_COLUMNS = (
+    "evaluation_step",
+    "env_id",
+    "episode_step",
+    "active",
+    "index_before",
+    "index_after",
+    "settled",
+    "dwell_steps",
+    "advanced",
+    "complete",
+    "maximum_agent_error_m",
+    "minimum_separation_m",
+    "maximum_speed_m_s",
+    "success_dwell_steps",
+    "reason_code",
+)
 
 
 def reference_actions(env) -> torch.Tensor:
@@ -56,6 +73,20 @@ def run_reference_evaluation(*, env, output: Path, evaluation_steps: int, event)
     directed_rows = 0
     active_rows = 0
     with ExitStack() as stack:
+        waypoint_stream = (
+            stack.enter_context(
+                (output / "waypoint-progress.csv").open("x", newline="", encoding="utf-8")
+            )
+            if env.waypoint_route_config is not None
+            else None
+        )
+        waypoint_writer = (
+            csv.DictWriter(waypoint_stream, fieldnames=WAYPOINT_COLUMNS)
+            if waypoint_stream is not None
+            else None
+        )
+        if waypoint_writer is not None:
+            waypoint_writer.writeheader()
         aggregate_stream = stack.enter_context(
             (output / "evaluation.csv").open("x", newline="", encoding="utf-8")
         )
@@ -131,6 +162,32 @@ def run_reference_evaluation(*, env, output: Path, evaluation_steps: int, event)
                             "reason_code": reason,
                         }
                     )
+                    if waypoint_writer is not None:
+                        route_target_error = (
+                            env.state[env_id, :, :3] - env.last_targets[env_id]
+                        ).norm(dim=-1)
+                        route_speed = env.state[env_id, :, 7:10].norm(dim=-1)
+                        waypoint_writer.writerow(
+                            {
+                                "evaluation_step": step,
+                                "env_id": env_id,
+                                "episode_step": progress,
+                                "active": bool(env.last_waypoint_active[env_id].item()),
+                                "index_before": int(env.last_waypoint_index[env_id].item()),
+                                "index_after": int(env.waypoint_index[env_id].item()),
+                                "settled": bool(env.waypoint_settled_this_step[env_id].item()),
+                                "dwell_steps": int(env.waypoint_dwell[env_id].item()),
+                                "advanced": bool(env.waypoint_advanced_this_step[env_id].item()),
+                                "complete": bool(env.waypoint_complete[env_id].item()),
+                                "maximum_agent_error_m": float(route_target_error.max().item()),
+                                "minimum_separation_m": float(
+                                    env.last_minimum_separation[env_id].item()
+                                ),
+                                "maximum_speed_m_s": float(route_speed.max().item()),
+                                "success_dwell_steps": int(env.success_dwell[env_id].item()),
+                                "reason_code": reason,
+                            }
+                        )
                     environment_rows += 1
                     drone_rows += write_telemetry_rows(
                         telemetry,
@@ -146,6 +203,8 @@ def run_reference_evaluation(*, env, output: Path, evaluation_steps: int, event)
                     )
                 aggregate_stream.flush()
                 telemetry_stream.flush()
+                if waypoint_stream is not None:
+                    waypoint_stream.flush()
                 if bool(done.any()):
                     env.reset_mask(done)
     expected = evaluation_steps * num_envs
@@ -157,6 +216,12 @@ def run_reference_evaluation(*, env, output: Path, evaluation_steps: int, event)
         "environment_did_not_clip_actions": saturation_count == 0,
         "commands_point_toward_targets": directed_rows == active_rows,
         "no_policy_or_optimizer_used": True,
+        "shape_commands_observed_if_requested": (
+            env.shape_transition_config is None or env.transition_total_commands >= num_envs
+        ),
+        "waypoint_commands_observed_if_requested": (
+            env.waypoint_route_config is None or env.waypoint_total_commands >= num_envs
+        ),
     }
     event("reference_loop_finished", checks=checks, outcome_counts=outcome_counts)
     return {
@@ -175,6 +240,18 @@ def run_reference_evaluation(*, env, output: Path, evaluation_steps: int, event)
         "outcome_counts": outcome_counts,
         "active_drone_steps": active_rows,
         "target_directed_drone_steps": directed_rows,
+        "shape_transition_commands": env.transition_total_commands,
+        "waypoint_route_commands": env.waypoint_total_commands,
+        "waypoint_route_advances": env.waypoint_total_advances,
+        "waypoint_route_completions": env.waypoint_total_completions,
+        "waypoint_route_config": (
+            env.waypoint_route_config.to_dict() if env.waypoint_route_config is not None else None
+        ),
+        "shape_transition_config": (
+            env.shape_transition_config.to_dict()
+            if env.shape_transition_config is not None
+            else None
+        ),
         "measurements": {
             "assigned_rmse_mean_m": assigned_sum / expected,
             "pairwise_rmse_mean_m": pairwise_sum / expected,

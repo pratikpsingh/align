@@ -1,0 +1,9 @@
+# Why a drone remembers that it took off
+
+Imagine one drone sitting at 0.06 m with its landing gear touching the floor. The contact sensor reads a force, but this is normal. It rises past 0.25 m, then loses control and lands during takeoff. If we check only its *current* height when the floor force returns, we again see roughly 0.06 m and may call the contact normal. The missing fact is that this drone had already been in the air.
+
+ALiGn now keeps one Boolean `ever_airborne` for each drone in each simulator world. At every physics/control step, it becomes true once height exceeds `airborne_height_m`; it stays true until that world resets. A contact force above the configured threshold is a flight failure whenever this Boolean is true. In the formation phase, contact is a failure regardless of the Boolean, so a failed takeoff is also detected. Ground-phase contact before ascent remains expected.
+
+For example, a world with heights `0.06 → 0.40 → 0.06 m` and contact forces `0.1 → 0 → 0.5 N` has latch states `false → true → true`. The last `0.5 N` contact is unsafe even though its height is low. Resetting that world clears its latch; another world that has not reset keeps its own state. This is ordinary episode memory, separate from the actor's LSTM memory.
+
+The pure [task ledger](../src/align/tasks/environment.py) and the live [OmniDrones task](../src/align/simulation/vector_task.py) use the same rule; [tests](../tests/test_task_environment.py) exercise the fall and partial reset. The [operations note](../docs/42-takeoff-contact-latch.md) records validation. A CPU check proves the Boolean logic, but only a physical replay can show when the actual contact sensor fires in Isaac Sim. The positive-speed training run was made before this rule and remains a negative result under its original image.

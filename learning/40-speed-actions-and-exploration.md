@@ -1,0 +1,15 @@
+# Why a redundant speed sign matters
+
+A drone command has three direction coordinates and a fourth speed scale. The controller normalizes the direction and multiplies speed by `abs(action[3])`. For example, with a +X direction and a 0.5 m/s limit, fourth coordinates `+0.4` and `-0.4` both request `+0.2 m/s` along X. The policy, however, assigns separate probabilities to `+0.4` and `-0.4`. This makes the map from policy action to physical motion many-to-one.
+
+The paper describes a four-dimensional bounded action and target velocity; the student's `VelocityAviary` source supplies the absolute-value speed decode. ALiGn's baseline kept that decode so the calibrated controller interface remained close to the student's intent. In saved trained flights, the fourth coordinate was often near zero, producing very slow movement. That correlation does not prove the sign redundancy caused the learning failure: target alignment, reward balance, limited updates, and exploration can also matter.
+
+A controlled test changes the fourth coordinate's policy support from `[-1,1]` to `[0,1]`. The affine tanh distribution still produces bounded actions and correct transformed log probabilities. At latent mean zero, its speed coordinate is now 0.5 rather than zero. This changes initial behavior and exploration as well as any later learning. If direction is zero, both actions still command zero velocity; the speed coordinate alone does not move a drone. The experiment must therefore inspect actual direction, requested speed, realized motion, formation error, safety, and success at update 0 and later checkpoints.
+
+Code: [pure protocol validator](../src/align/policies/action_interface.py), [distribution](../src/align/policies/torch_recurrent.py), [physical decoder](../src/align/simulation/vector_task.py), and [test](../tests/test_positive_speed_protocol.py). The [operational guide](../docs/41-nonnegative-policy-speed.md) gives the equal-budget experiment and interpretation limits.
+
+## What the matched flight taught us
+
+The `[0,1]` policy bound did make the untrained speed coordinate positive, but the two-seed, four-update physical treatment never succeeded. At update 4, seed 41 reached the first formation step in four worlds and immediately ended in contact. Its four formation rows cannot be compared as though they were the baseline's 1,796 formation rows. Seed 73 also had more contacts and fewer formation rows than its baseline. A whole-episode error average mixes ground, takeoff, and formation, so a lower number can hide a crash before the hard part of the task. We now report phase counts, terminal reasons, and formation-only error together.
+
+This is an example of why an action distribution needs physical validation: removing a mathematically redundant sign increased initial commanded speed, but that did not teach safe direction or controlled takeoff. The next diagnostic is a frozen-policy replay with per-drone positions, targets, commands, and contact forces, followed by a phase-aware takeoff-safety check. See the [matched result and commands](../docs/41-nonnegative-policy-speed.md).

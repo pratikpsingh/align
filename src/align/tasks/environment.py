@@ -153,6 +153,7 @@ class BatchedTaskEnvironment:
         self.success_dwell_steps = [0] * task.num_envs
         self._reward_memories = [RewardMemory() for _ in range(task.num_envs)]
         self._reward_phases: list[str | None] = [None] * task.num_envs
+        self._ever_airborne = [[False] * construction.num_agents for _ in range(task.num_envs)]
         self.active = [True] * task.num_envs
 
     def reset(self, env_ids: Sequence[int] | None = None) -> None:
@@ -168,6 +169,7 @@ class BatchedTaskEnvironment:
             self.success_dwell_steps[env_id] = 0
             self._reward_memories[env_id] = RewardMemory()
             self._reward_phases[env_id] = None
+            self._ever_airborne[env_id] = [False] * self.construction.num_agents
             self.active[env_id] = True
 
     def observe(
@@ -220,14 +222,25 @@ class BatchedTaskEnvironment:
                 self._reward_memories[env_id] = RewardMemory()
                 self._reward_phases[env_id] = phase
             targets = targets_for_phase(self.layout, phase)
-            airborne = tuple(point[2] > self.task.airborne_height_m for point in positions[env_id])
+            # Expected ground contact is allowed until each drone first rises above
+            # the takeoff threshold. The latch catches a later fall during takeoff,
+            # even after the drone is back below the current-height threshold.
+            self._ever_airborne[env_id] = [
+                was_airborne or point[2] > self.task.airborne_height_m
+                for was_airborne, point in zip(
+                    self._ever_airborne[env_id], positions[env_id], strict=True
+                )
+            ]
+            contact_guarded = tuple(
+                phase == "formation" or was_airborne for was_airborne in self._ever_airborne[env_id]
+            )
             reward_step, memory = compute_step_reward(
                 positions[env_id],
                 targets,
                 velocities[env_id],
                 actions[env_id],
                 contact_forces_n[env_id],
-                airborne,
+                contact_guarded,
                 self.reward,
                 self._reward_memories[env_id],
             )
@@ -290,7 +303,7 @@ class BatchedTaskEnvironment:
             return "separation_violation"
         if any(reward_step.airborne_contact):
             self.success_dwell_steps[env_id] = 0
-            return "airborne_contact"
+            return "flight_contact"
         if any(
             abs(x) > self.task.safety_xy_limit_m
             or abs(y) > self.task.safety_xy_limit_m

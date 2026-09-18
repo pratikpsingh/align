@@ -16,6 +16,8 @@ from importlib import metadata
 from pathlib import Path
 
 from align.artifacts import as_ist, utc_now, write_json_atomic
+from align.formations import ShapeTransitionConfig
+from align.formations.transition_report import make_transition_report
 from align.learning.collector_config import CollectorProbeConfig
 from align.learning.critic_calibration_config import CriticCalibrationConfig
 from align.learning.critic_normalization_config import CriticNormalizationConfig
@@ -32,12 +34,13 @@ from align.tasks.evaluation_timing import EvaluationTimingConfig, apply_evaluati
 from align.tasks.formation_schedule import FormationScheduleConfig
 from align.tasks.observation import ObservationConfig, build_observations
 from align.tasks.reward import RewardConfig, RewardMemory, compute_step_reward
+from align.tasks.waypoints import WaypointRouteConfig, make_waypoint_plan
 
 REASON_NAMES = {
     0: None,
     1: "success",
     2: "separation_violation",
-    3: "airborne_contact",
+    3: "flight_contact",
     4: "safety_envelope",
     5: "nonfinite",
     6: "time_limit",
@@ -261,6 +264,8 @@ def run(
     evaluation_update: int | None = None,
     policy_telemetry: bool = False,
     evaluation_timing_config: Path | None = None,
+    shape_transition_config: Path | None = None,
+    waypoint_route_config: Path | None = None,
     training_start_update: int = 0,
     training_stop_update: int | None = None,
     fault_at_update: int | None = None,
@@ -322,6 +327,12 @@ def run(
         raise ValueError("policy telemetry is valid only for evaluation")
     if evaluation_timing_config is not None and scenario not in ("evaluation", "reference"):
         raise ValueError("evaluation timing override is valid only for evaluation or reference")
+    if shape_transition_config is not None and scenario != "reference":
+        raise ValueError("shape transition command is currently supported only for reference")
+    if waypoint_route_config is not None and scenario != "reference":
+        raise ValueError("waypoint route is currently supported only for reference")
+    if shape_transition_config is not None and waypoint_route_config is not None:
+        raise ValueError("shape transition and waypoint route cannot be combined")
     timing_details = None
     if evaluation_timing_config is not None:
         timing = EvaluationTimingConfig.from_dict(json.loads(evaluation_timing_config.read_text()))
@@ -329,6 +340,22 @@ def run(
             timing, construction, task, stability
         )
         task.validate_compatibility(construction, observation, reward)
+    transition_config = None
+    transition_plan = None
+    if shape_transition_config is not None:
+        transition_config = ShapeTransitionConfig.from_dict(
+            json.loads(shape_transition_config.read_text())
+        )
+        if formation_schedule.kinds != (transition_config.source_kind,):
+            raise ValueError("shape transition requires one matching source formation kind")
+        transition_plan = make_transition_report(construction, task, transition_config)
+    route_config = None
+    route_plan = None
+    if waypoint_route_config is not None:
+        route_config = WaypointRouteConfig.from_dict(json.loads(waypoint_route_config.read_text()))
+        if formation_schedule.kinds != (construction.formation_kind,):
+            raise ValueError("waypoint route requires one matching formation kind")
+        route_plan = make_waypoint_plan(construction, task, route_config)
     if scenario != "stability" and (training_start_update != 0 or training_stop_update is not None):
         raise ValueError("training update ranges are valid only for stability")
     if (fault_at_update is None) != (fault_after_rollout_step is None):
@@ -372,6 +399,10 @@ def run(
     }
     result["started_at_ist"] = as_ist(result["started_at_utc"])
     result["evaluation_timing"] = timing_details
+    result["shape_transition_plan"] = transition_plan
+    result["shape_transition_physics_tested"] = False
+    result["waypoint_route_plan"] = route_plan.to_dict() if route_plan is not None else None
+    result["waypoint_route_physics_tested"] = False
     app = None
 
     def event(name, **details):
@@ -431,6 +462,50 @@ def run(
                     for kind in self.formation_kinds
                 )
                 super().__init__(cfg, headless=True)
+                self.shape_transition_config = transition_config
+                self.shape_transition_plan = transition_plan
+                self.transition_destination = (
+                    torch.tensor(
+                        transition_plan["assignment"]["assigned_destination_m"],
+                        device=self.device,
+                        dtype=torch.float32,
+                    )
+                    if transition_plan is not None
+                    else None
+                )
+                self.transition_issued = torch.zeros(num_envs, dtype=torch.bool, device=self.device)
+                self.transition_total_commands = 0
+                self.last_transition_active = torch.zeros(
+                    num_envs, dtype=torch.bool, device=self.device
+                )
+                self.waypoint_route_config = route_config
+                self.waypoint_route_plan = route_plan
+                self.waypoint_target_bank = (
+                    torch.tensor(
+                        route_plan.assigned_targets_m, device=self.device, dtype=torch.float32
+                    )
+                    if route_plan is not None
+                    else None
+                )
+                self.waypoint_index = torch.zeros(num_envs, dtype=torch.long, device=self.device)
+                self.waypoint_dwell = torch.zeros(num_envs, dtype=torch.long, device=self.device)
+                self.waypoint_complete = torch.zeros(num_envs, dtype=torch.bool, device=self.device)
+                self.waypoint_issued = torch.zeros(num_envs, dtype=torch.bool, device=self.device)
+                self.last_waypoint_active = torch.zeros(
+                    num_envs, dtype=torch.bool, device=self.device
+                )
+                self.last_waypoint_index = torch.zeros(
+                    num_envs, dtype=torch.long, device=self.device
+                )
+                self.waypoint_advanced_this_step = torch.zeros(
+                    num_envs, dtype=torch.bool, device=self.device
+                )
+                self.waypoint_settled_this_step = torch.zeros(
+                    num_envs, dtype=torch.bool, device=self.device
+                )
+                self.waypoint_total_commands = 0
+                self.waypoint_total_advances = 0
+                self.waypoint_total_completions = 0
                 self.template_target_bank = torch.tensor(
                     [
                         [
@@ -509,7 +584,13 @@ def run(
                 self.reward_memory_phase = torch.full(
                     (num_envs,), -1, dtype=torch.long, device=self.device
                 )
+                self.reward_memory_transition_active = torch.zeros(
+                    num_envs, dtype=torch.bool, device=self.device
+                )
                 self.success_dwell = torch.zeros(num_envs, dtype=torch.long, device=self.device)
+                self.ever_airborne = torch.zeros(
+                    num_envs, construction.num_agents, dtype=torch.bool, device=self.device
+                )
                 self.state = None
                 self.contact_force = None
                 self.last_actions = None
@@ -628,7 +709,20 @@ def run(
                 )
 
             def targets_for_progress(self):
-                return self.template_target_bank[self.template_index, self.phase_indices()]
+                phase = self.phase_indices()
+                base = self.template_target_bank[self.template_index, phase]
+                if self.waypoint_route_config is not None:
+                    active = (phase == 2) & (
+                        self.progress_buf >= self.waypoint_route_config.command_step
+                    )
+                    selected = self.waypoint_target_bank[self.waypoint_index]
+                    return torch.where(active[:, None, None], selected, base)
+                if self.shape_transition_config is None:
+                    return base
+                active = (phase == 2) & (
+                    self.progress_buf >= self.shape_transition_config.command_step
+                )
+                return torch.where(active[:, None, None], self.transition_destination, base)
 
             def set_template_batch(self, batch_index):
                 assignments = self.formation_schedule.assignments(num_envs, batch_index)
@@ -644,8 +738,16 @@ def run(
                 event("template_batch_selected", batch_index=batch_index, assignments=assignments)
 
             def template_names(self):
-                return tuple(
+                initial = tuple(
                     self.formation_kinds[index] for index in self.template_index.cpu().tolist()
+                )
+                if self.shape_transition_config is None:
+                    return initial
+                return tuple(
+                    self.shape_transition_config.destination_kind if active else kind
+                    for active, kind in zip(
+                        self.last_transition_active.cpu().tolist(), initial, strict=True
+                    )
                 )
 
             def _reset_idx(self, env_ids):
@@ -677,7 +779,19 @@ def run(
                 self.reward_command_memory[env_ids] = 0.0
                 self.reward_memory_valid[env_ids] = False
                 self.reward_memory_phase[env_ids] = -1
+                self.reward_memory_transition_active[env_ids] = False
+                self.transition_issued[env_ids] = False
+                self.last_transition_active[env_ids] = False
+                self.waypoint_index[env_ids] = 0
+                self.waypoint_dwell[env_ids] = 0
+                self.waypoint_complete[env_ids] = False
+                self.waypoint_issued[env_ids] = False
+                self.last_waypoint_active[env_ids] = False
+                self.last_waypoint_index[env_ids] = 0
+                self.waypoint_advanced_this_step[env_ids] = False
+                self.waypoint_settled_this_step[env_ids] = False
                 self.success_dwell[env_ids] = 0
+                self.ever_airborne[env_ids] = False
                 state = self.drone.get_state().clone()
                 reset_error = torch.stack(
                     (
@@ -739,9 +853,41 @@ def run(
 
             def _step(self, tensordict):
                 self.last_reward_phase = self.phase_indices().clone()
-                self.last_targets = self.template_target_bank[
-                    self.template_index, self.last_reward_phase
-                ]
+                if self.waypoint_route_config is not None:
+                    self.last_waypoint_active = (self.last_reward_phase == 2) & (
+                        self.progress_buf >= self.waypoint_route_config.command_step
+                    )
+                    self.last_waypoint_index = self.waypoint_index.clone()
+                    newly_issued = self.last_waypoint_active & ~self.waypoint_issued
+                    if bool(newly_issued.any().item()):
+                        env_ids = newly_issued.nonzero().squeeze(-1).cpu().tolist()
+                        self.waypoint_total_commands += len(env_ids)
+                        self.waypoint_issued |= newly_issued
+                        self.reward_memory_valid[newly_issued] = False
+                        self.success_dwell[newly_issued] = 0
+                        event(
+                            "waypoint_route_command_issued",
+                            env_ids=env_ids,
+                            episode_step=self.waypoint_route_config.command_step,
+                            legs=len(self.waypoint_route_plan.centers_m),
+                        )
+                if self.shape_transition_config is not None:
+                    self.last_transition_active = (self.last_reward_phase == 2) & (
+                        self.progress_buf >= self.shape_transition_config.command_step
+                    )
+                    newly_issued = self.last_transition_active & ~self.transition_issued
+                    if bool(newly_issued.any().item()):
+                        env_ids = newly_issued.nonzero().squeeze(-1).cpu().tolist()
+                        self.transition_total_commands += len(env_ids)
+                        self.success_dwell[newly_issued] = 0
+                        self.transition_issued |= newly_issued
+                        event(
+                            "shape_command_issued",
+                            env_ids=env_ids,
+                            episode_step=self.shape_transition_config.command_step,
+                            destination_kind=self.shape_transition_config.destination_kind,
+                        )
+                self.last_targets = self.targets_for_progress()
                 self._pre_sim_step(tensordict)
                 for substep in range(self.substeps):
                     self.sim.step(self._should_render(substep))
@@ -884,12 +1030,14 @@ def run(
                 separation_matrix = torch.cdist(positions, positions)
                 identity = torch.eye(agents, dtype=torch.bool, device=self.device).unsqueeze(0)
                 minimum_separation = separation_matrix.masked_fill(identity, torch.inf).amin(dim=-1)
-                airborne_contact = (positions[..., 2] > task.airborne_height_m) & (
-                    self.contact_force > task.contact_force_threshold_n
-                )
+                self.ever_airborne |= positions[..., 2] > task.airborne_height_m
+                flight_contact = (
+                    self.ever_airborne | (self.last_reward_phase.unsqueeze(-1) == 2)
+                ) & (self.contact_force > task.contact_force_threshold_n)
 
                 same_phase = self.reward_memory_phase == self.last_reward_phase
-                memory_valid = self.reward_memory_valid & same_phase
+                same_command = self.reward_memory_transition_active == self.last_transition_active
+                memory_valid = self.reward_memory_valid & same_phase & same_command
                 progress = torch.where(
                     memory_valid.unsqueeze(-1),
                     (self.reward_distance_memory - target_distances)
@@ -914,7 +1062,7 @@ def run(
                         -(target_distances / reward.distance_scale_m).square(),
                         progress,
                         -separation_intrusion.square(),
-                        -airborne_contact.float(),
+                        -flight_contact.float(),
                         -proximity * (speeds / reward.max_speed_m_s).square(),
                         smoothness,
                         effort,
@@ -956,6 +1104,7 @@ def run(
                 self.reward_command_memory[:] = self.commanded_velocities
                 self.reward_memory_valid[:] = True
                 self.reward_memory_phase[:] = self.last_reward_phase
+                self.reward_memory_transition_active[:] = self.last_transition_active
 
                 assigned_rmse = (positions - targets).square().sum(dim=-1).mean(dim=-1).sqrt()
                 pairwise_rmse = (actual_pair - target_pair).square().mean(dim=-1).sqrt()
@@ -965,12 +1114,47 @@ def run(
                     & (pairwise_rmse <= task.pairwise_rmse_tolerance_m)
                     & (speeds.amax(dim=-1) <= task.speed_tolerance_m_s)
                 )
+                if self.shape_transition_config is not None:
+                    settled &= self.last_transition_active
+                if self.waypoint_route_config is not None:
+                    route = self.waypoint_route_config
+                    arrival = (
+                        self.last_waypoint_active
+                        & ~self.waypoint_complete
+                        & (target_distances.amax(dim=-1) <= route.arrival_radius_m)
+                        & (minimum_separation.amin(dim=-1) >= route.minimum_arrival_separation_m)
+                        & (speeds.amax(dim=-1) <= route.maximum_arrival_speed_m_s)
+                    )
+                    self.waypoint_settled_this_step = arrival
+                    self.waypoint_dwell[:] = torch.where(
+                        arrival, self.waypoint_dwell + 1, torch.zeros_like(self.waypoint_dwell)
+                    )
+                    reached = arrival & (self.waypoint_dwell >= route.arrival_dwell_steps)
+                    final = reached & (
+                        self.waypoint_index == len(self.waypoint_route_plan.centers_m) - 1
+                    )
+                    advance = reached & ~final
+                    self.waypoint_advanced_this_step = advance
+                    self.waypoint_index[advance] += 1
+                    self.waypoint_complete |= final
+                    self.waypoint_dwell[reached] = 0
+                    self.reward_memory_valid[advance] = False
+                    self.success_dwell[reached] = 0
+                    self.waypoint_total_advances += int(advance.sum().item())
+                    self.waypoint_total_completions += int(final.sum().item())
+                    if bool(reached.any().item()):
+                        event(
+                            "waypoint_gate_passed",
+                            advanced_env_ids=advance.nonzero().squeeze(-1).cpu().tolist(),
+                            completed_env_ids=final.nonzero().squeeze(-1).cpu().tolist(),
+                        )
+                    settled &= self.waypoint_complete & ~advance
                 self.success_dwell[:] = torch.where(
                     settled, self.success_dwell + 1, torch.zeros_like(self.success_dwell)
                 )
                 success = self.success_dwell >= task.success_dwell_steps
                 separation_failure = minimum_separation.amin(dim=-1) < task.terminal_separation_m
-                contact_failure = airborne_contact.any(dim=-1)
+                contact_failure = flight_contact.any(dim=-1)
                 envelope_failure = (
                     (positions[..., :2].abs() > task.safety_xy_limit_m).any(dim=(-2, -1))
                     | (positions[..., 2] < task.crash_height_m).any(dim=-1)
@@ -1183,6 +1367,12 @@ def run(
                 drone_physics_tested=True,
                 vector_task_physics_tested=True,
                 reference_evaluation_tested=True,
+                shape_transition_physics_tested=(
+                    transition_config is not None and metrics["status"] == "passed"
+                ),
+                waypoint_route_physics_tested=(
+                    route_config is not None and metrics["status"] == "passed"
+                ),
                 optimizer_updates=0,
                 agent_steps=metrics["telemetry_rows"],
                 torch_peak_allocated_bytes=torch.cuda.max_memory_allocated(),
@@ -1598,6 +1788,8 @@ def main(argv=None):
     parser.add_argument("--evaluation-update", type=int)
     parser.add_argument("--policy-telemetry", action="store_true")
     parser.add_argument("--evaluation-timing-config", type=Path)
+    parser.add_argument("--shape-transition-config", type=Path)
+    parser.add_argument("--waypoint-route-config", type=Path)
     parser.add_argument("--training-start-update", type=int, default=0)
     parser.add_argument("--training-stop-update", type=int)
     parser.add_argument("--fault-at-update", type=int)
@@ -1621,6 +1813,8 @@ def main(argv=None):
         evaluation_update=args.evaluation_update,
         policy_telemetry=args.policy_telemetry,
         evaluation_timing_config=args.evaluation_timing_config,
+        shape_transition_config=args.shape_transition_config,
+        waypoint_route_config=args.waypoint_route_config,
         training_start_update=args.training_start_update,
         training_stop_update=args.training_stop_update,
         fault_at_update=args.fault_at_update,

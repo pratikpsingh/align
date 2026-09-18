@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "actor_observation_dim": 55,
+  "critic_state_dim": 80,
+  "action_dim": 4,
+  "encoder_hidden_size": 256,
+  "recurrent_hidden_size": 256,
+  "recurrent_layers": 1,
+  "log_std_initial": -0.5,
+  "log_std_min": -5.0,
+  "log_std_max": 1.0,
+  "squash_epsilon": 1e-06,
+  "action_low": [
+    -1.0,
+    -1.0,
+    -1.0,
+    0.0
+  ],
+  "action_high": [
+    1.0,
+    1.0,
+    1.0,
+    1.0
+  ]
+}

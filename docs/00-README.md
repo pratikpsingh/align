@@ -38,5 +38,15 @@ Start here, then follow the numbered files in order. The prefixes describe readi
 32. [Frozen-policy episode timing](32-frozen-policy-timing.md): same-checkpoint baseline/extended schedule evaluation, audit, command, and interpretation.
 33. [Target-directed reference control](33-reference-control.md): bounded physical controller, matched schedules, raw audit, and lab command.
 34. [Communication accounting](34-communication-accounting.md): offline topology sweep, packet-byte proxy assumptions, raw artifacts, and limits.
+35. [Feasible-schedule plane learning probe](35-feasible-schedule-training.md): matched task durations, rollout exposure, two-seed command, and acceptance limits.
+36. [Formation-weight ablation](36-formation-reward-ablation.md): one-variable treatment, paired raw audit, command, and interpretation rules.
+
+37. [Actor export and fresh-process inference](37-actor-export-and-inference.md): actor artifact, local interface, exact-checkpoint export, CPU measurements, and independent load.
+38. [Shape-transition planning](38-shape-transition-planning.md): fixed-ID planning, downwash proxy, physical reference results, and long-hold protocol.
+39. [Flight-phase contact termination](39-flight-contact-termination.md): contact guard after takeoff, reason-code compatibility, and simulator acceptance.
+40. [Fixed-ID group waypoint routes](40-waypoint-route-contract.md): route geometry, all-drone advancement, simulator reference command, raw audit, and accepted 3 m physical comparison.
+41. [Nonnegative policy speed coordinate](41-nonnegative-policy-speed.md): one-bound action experiment, matched training commands, and interpretation limits.
+42. [Contact detection after takeoff begins](42-takeoff-contact-latch.md): per-drone airborne latch, reset semantics, CPU checks, and pending physical acceptance.
+43. [Eight-drone plane reference](43-eight-drone-reference.md): explicit size-eight construction config, CPU feasibility checks, and pending physical acceptance.
 
 For beginner explanations, begin with the [learning index](../learning/00-README.md). For research scope and intended implementation, use the [planning index](../plans/00-README.md). Setup instructions distinguish CPU contracts, implemented simulator behavior, and pending research validation.
